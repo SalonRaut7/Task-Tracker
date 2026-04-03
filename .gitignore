@@ -1,0 +1,48 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+**/[Bb]in/
+**/[Oo]bj/
+
+# IDE and editor state
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.swp
+*.tmp
+
+# Logs and runtime output
+logs/
+*.log
+TaskTracker.API/logs/
+
+# ASP.NET Core / local development secrets
+appsettings.Development.json
+**/appsettings.Development.json
+appsettings.Local.json
+**/appsettings.Local.json
+secrets.json
+*.Secrets.json
+
+# NuGet / package caches
+project.assets.json
+packages/
+*.nupkg
+
+# Test and coverage artifacts
+TestResults/
+coverage/
+coverage*.xml
+*.coverage
+*.coveragexml
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Entity Framework / database tooling artifacts
+migrations_backup/
