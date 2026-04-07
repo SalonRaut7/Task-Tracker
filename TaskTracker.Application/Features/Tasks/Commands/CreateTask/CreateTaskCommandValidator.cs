@@ -11,7 +11,18 @@ namespace TaskTracker.Application.Features.Tasks.Commands.CreateTask
                 .MaximumLength(100).WithMessage("Title cannot exceed 100 characters");
 
             RuleFor(x => x.Description)
-                .MaximumLength(500);
+                .MaximumLength(500).WithMessage("Description cannot exceed 500 characters");
+
+            RuleFor(x => x.Status)
+                .IsInEnum().WithMessage("Invalid status value");
+
+            RuleFor(x => x.Priority)
+                .IsInEnum().WithMessage("Invalid priority value");
+
+            RuleFor(x => x.StartDate)
+                .LessThanOrEqualTo(x => x.EndDate)
+                .When(x => x.StartDate.HasValue && x.EndDate.HasValue)
+                .WithMessage("Start date must be before or equal to end date.");
         }
     }
 }

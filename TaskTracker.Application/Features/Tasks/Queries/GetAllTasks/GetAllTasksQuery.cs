@@ -8,4 +8,5 @@ public class GetAllTasksQuery : IRequest<List<TaskDto>>
 {
     public string? TitleContains { get; set; }
     public Status? Status { get; set; }
+    public TaskPriority? Priority { get; set; }
 }
