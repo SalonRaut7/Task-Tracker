@@ -1,4 +1,4 @@
-import TaskList from "./components/TaskList";
+import TaskList from "./components/tasks/TaskList";
 
 export default function App() {
   return (
