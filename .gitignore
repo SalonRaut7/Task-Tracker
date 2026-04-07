@@ -46,3 +46,4 @@ desktop.ini
 
 # Entity Framework / database tooling artifacts
 migrations_backup/
+node_modules

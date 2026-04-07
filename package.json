@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "axios": "^1.14.0",
+    "devextreme": "^25.2.5",
+    "devextreme-react": "^25.2.5",
+    "devextreme-themebuilder": "^25.2.5",
+    "react-router-dom": "^7.14.0"
+  }
+}
