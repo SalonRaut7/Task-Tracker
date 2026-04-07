@@ -31,6 +31,7 @@ namespace TaskTracker.Infrastructure.Repositories
         public async Task<List<TaskItem>> ListAsync(
             string? titleContains = null,
             Status? status = null,
+            TaskPriority? priority = null,
             CancellationToken cancellationToken = default)
         {
             IQueryable<TaskItem> query = _context.Tasks.AsNoTracking();
@@ -44,6 +45,10 @@ namespace TaskTracker.Infrastructure.Repositories
             if (status.HasValue)
             {
                 query = query.Where(task => task.Status == status.Value);
+            }
+            if (priority.HasValue)
+            {
+                query = query.Where(task => task.Priority == priority.Value);
             }
 
             return await query

@@ -18,7 +18,7 @@ public class GetAllTasksQueryHandler : IRequestHandler<GetAllTasksQuery, List<Ta
 
     public async Task<List<TaskDto>> Handle(GetAllTasksQuery request, CancellationToken cancellationToken)
     {
-        var tasks = await _taskRepository.ListAsync(request.TitleContains, request.Status, cancellationToken);
+        var tasks = await _taskRepository.ListAsync(request.TitleContains, request.Status,request.Priority, cancellationToken);
 
         return _mapper.Map<List<TaskDto>>(tasks);
     }
