@@ -10,6 +10,8 @@ namespace TaskTracker.Infrastructure.Data
 
         // Define your DbSets here, for example:
         // public DbSet<Task> Tasks { get; set; }
-        public DbSet<TaskItem> Tasks { get; set; } = null!;
+        // public DbSet<TaskItem> Tasks { get; set; } = null!;
+
+        public DbSet<TaskItem> Tasks => Set<TaskItem>();
     }
 }

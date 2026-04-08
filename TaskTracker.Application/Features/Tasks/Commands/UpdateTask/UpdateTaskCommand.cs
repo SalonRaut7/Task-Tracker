@@ -11,6 +11,6 @@ public class UpdateTaskCommand : IRequest<TaskDto?>
     public string? Description { get; set; }
     public Status Status { get; set; }
     public TaskPriority Priority { get; set; }
-    public DateTime? StartDate { get; set; }
-    public DateTime? EndDate { get; set; }
+    public DateOnly? StartDate { get; set; }
+    public DateOnly? EndDate { get; set; }
 }

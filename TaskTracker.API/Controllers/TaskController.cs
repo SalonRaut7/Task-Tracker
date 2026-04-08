@@ -33,10 +33,10 @@ namespace TaskTracker.API.Controllers
 
         // GET: api/tasks/{id}
         [HttpGet("{id}")]
-        public async Task<ActionResult<TaskDto>> GetById(int id, CancellationToken cancellationToken)
+        public async Task<ActionResult<TaskDto>> GetById([FromRoute] int id, CancellationToken cancellationToken)
         {
             var task = await _mediator.Send(new GetTaskByIdQuery { Id = id }, cancellationToken);
-            if (task == null) return NotFound();
+            if (task is null) return NotFound();
             return Ok(task);
         }
 
@@ -56,7 +56,7 @@ namespace TaskTracker.API.Controllers
 
         // PUT: api/tasks/{id}
         [HttpPut("{id}")]
-        public async Task<ActionResult<TaskDto>> Update(int id, [FromBody] UpdateTaskDto dto, CancellationToken cancellationToken)
+        public async Task<ActionResult<TaskDto>> Update([FromRoute] int id, [FromBody] UpdateTaskDto dto, CancellationToken cancellationToken)
         {
             var command = _mapper.Map<UpdateTaskCommand>(dto);
             command.Id = id;
@@ -69,7 +69,7 @@ namespace TaskTracker.API.Controllers
 
         // DELETE: api/tasks/{id}
         [HttpDelete("{id}")]
-        public async Task<ActionResult> Delete(int id, CancellationToken cancellationToken)
+        public async Task<ActionResult> Delete([FromRoute] int id, CancellationToken cancellationToken)
         {
             var result = await _mediator.Send(new DeleteTaskCommand { Id = id }, cancellationToken);
             if (!result) return NotFound();
