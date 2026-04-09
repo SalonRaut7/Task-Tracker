@@ -17,5 +17,14 @@ public class GetAllTasksQueryValidator : AbstractValidator<GetAllTasksQuery>
         RuleFor(x => x.Priority)
             .IsInEnum().WithMessage("Invalid priority value")
             .When(x => x.Priority.HasValue);
+
+        RuleFor(x => x.Skip)
+            .GreaterThanOrEqualTo(0).WithMessage("Skip must be zero or greater")
+            .When(x => x.Skip.HasValue);
+
+        RuleFor(x => x.Take)
+            .GreaterThan(0).WithMessage("Take must be greater than zero")
+            .LessThanOrEqualTo(500).WithMessage("Take cannot exceed 500")
+            .When(x => x.Take.HasValue);
     }
 }

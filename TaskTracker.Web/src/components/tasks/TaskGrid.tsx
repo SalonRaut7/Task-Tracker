@@ -1,30 +1,27 @@
 import DataGrid, {
-  Column,
   ColumnChooser,
   ColumnFixing,
+  Column,
   Export,
   FilterRow,
-  GroupPanel,
   HeaderFilter,
   LoadPanel,
   Pager,
   Paging,
   SearchPanel,
   Selection,
-  Sorting,
   Toolbar,
   Item as ToolbarItem,
-  StateStoring,
 } from "devextreme-react/data-grid";
 import Button from "devextreme-react/button";
+import CustomStore from "devextreme/data/custom_store";
 import type { ExportingEvent } from "devextreme/ui/data_grid";
 import type { TaskDto } from "../../types/task";
 import { priorityOptions, statusOptions } from "./taskOptions";
 import { PriorityBadge, StatusBadge } from "./TaskBadges";
 
 type TaskGridProps = {
-  tasks: TaskDto[];
-  loading: boolean;
+  tasks: CustomStore<TaskDto, number>;
   onAdd: () => void;
   onEdit: (task: TaskDto) => void;
   onDelete: (task: TaskDto) => void;
@@ -33,7 +30,6 @@ type TaskGridProps = {
 
 export default function TaskGrid({
   tasks,
-  loading,
   onAdd,
   onEdit,
   onDelete,
@@ -51,27 +47,21 @@ export default function TaskGrid({
       repaintChangesOnly={true}
       allowColumnReordering={true}
       allowColumnResizing={true}
+      remoteOperations={{ paging: true, sorting: false, filtering: false }}
       columnResizingMode="widget"
       height={700}
       noDataText="No tasks found."
       onExporting={onExporting}
     >
-      <StateStoring
-        enabled={true}
-        type="localStorage"
-        storageKey="task-grid-state"
-      />
-
-      <LoadPanel enabled={loading} />
+      <LoadPanel enabled={true} />
       <SearchPanel visible={true} placeholder="Search tasks..." width={260} />
       <FilterRow visible={true} />
       <HeaderFilter visible={true} />
-      <GroupPanel visible={true} />
-      <Sorting mode="multiple" />
       <Selection
         mode="multiple"
         showCheckBoxesMode="always"
-        selectAllMode="allPages"
+        allowSelectAll={true}
+        selectAllMode="page"
       />
       <ColumnChooser enabled={true} mode="select" />
       <ColumnFixing enabled={true} />
@@ -192,13 +182,11 @@ export default function TaskGrid({
         cellRender={({ data }) => (
           <div className="task-grid-actions">
             <Button
-              text="Edit"
               icon="edit"
               stylingMode="outlined"
               onClick={() => onEdit(data)}
             />
             <Button
-              text="Delete"
               icon="trash"
               type="danger"
               stylingMode="outlined"

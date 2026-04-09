@@ -7,7 +7,10 @@ import type { ExportingEvent } from "devextreme/ui/data_grid";
 import type { TaskDto } from "../../types/task";
 import { getPriorityText, getStatusText } from "./taskHelpers";
 
-export const exportTasks = async (e: ExportingEvent<TaskDto, number>) => {
+export const exportTasks = async (
+  e: ExportingEvent<TaskDto, number>,
+  selectedRowsOnly = false
+) => {
   if (e.format === "xlsx") {
     const workbook = new Workbook();
     const worksheet = workbook.addWorksheet("Tasks");
@@ -16,7 +19,7 @@ export const exportTasks = async (e: ExportingEvent<TaskDto, number>) => {
       component: e.component,
       worksheet,
       autoFilterEnabled: true,
-      selectedRowsOnly: e.selectedRowsOnly,
+      selectedRowsOnly,
       customizeCell: ({ gridCell, excelCell }) => {
         if (gridCell?.rowType !== "data" || !gridCell.column) return;
 
@@ -33,7 +36,7 @@ export const exportTasks = async (e: ExportingEvent<TaskDto, number>) => {
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(
       new Blob([buffer], { type: "application/octet-stream" }),
-      e.selectedRowsOnly ? "SelectedTasks.xlsx" : "Tasks.xlsx"
+      selectedRowsOnly ? "SelectedTasks.xlsx" : "Tasks.xlsx"
     );
   }
 
@@ -43,7 +46,7 @@ export const exportTasks = async (e: ExportingEvent<TaskDto, number>) => {
     await exportDataGridToPdf({
       jsPDFDocument: doc,
       component: e.component,
-      selectedRowsOnly: e.selectedRowsOnly,
+      selectedRowsOnly,
       customizeCell: ({ gridCell, pdfCell }) => {
         if (gridCell?.rowType !== "data" || !gridCell.column || !pdfCell) return;
 
@@ -57,6 +60,6 @@ export const exportTasks = async (e: ExportingEvent<TaskDto, number>) => {
       },
     });
 
-    doc.save(e.selectedRowsOnly ? "SelectedTasks.pdf" : "Tasks.pdf");
+    doc.save(selectedRowsOnly ? "SelectedTasks.pdf" : "Tasks.pdf");
   }
 };

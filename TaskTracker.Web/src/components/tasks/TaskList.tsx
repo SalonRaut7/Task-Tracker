@@ -14,7 +14,6 @@ import "./TaskList.css";
 export default function TaskList() {
   const {
     tasks,
-    loading,
     errorMessage,
     setErrorMessage,
     clearError,
@@ -132,7 +131,14 @@ export default function TaskList() {
 
   const onExporting = useCallback(
     async (e: ExportingEvent<TaskDto, number>) => {
-      await exportTasks(e);
+      e.cancel = true;
+
+      const selectedRowKeys = await e.component.getSelectedRowKeys();
+      if (selectedRowKeys.length > 0) {
+        await exportTasks(e, true);  // selected only
+      } else {
+        await exportTasks(e, false); // all data
+      }
     },
     []
   );
@@ -164,7 +170,6 @@ export default function TaskList() {
       <div className="tasklist-grid-card">
         <TaskGrid
           tasks={tasks}
-          loading={loading}
           onAdd={handleAdd}
           onEdit={handleEdit}
           onDelete={handleDelete}

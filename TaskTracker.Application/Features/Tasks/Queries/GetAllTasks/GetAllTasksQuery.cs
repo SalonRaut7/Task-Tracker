@@ -4,9 +4,11 @@ using TaskTracker.Domain.Enums;
 
 namespace TaskTracker.Application.Features.Tasks.Queries.GetAllTasks;
 
-public class GetAllTasksQuery : IRequest<List<TaskDto>>
+public class GetAllTasksQuery : IRequest<PagedResultDto<TaskDto>>
 {
     public string? TitleContains { get; set; }
     public Status? Status { get; set; }
     public TaskPriority? Priority { get; set; }
+    public int? Skip { get; set; }
+    public int? Take { get; set; }
 }

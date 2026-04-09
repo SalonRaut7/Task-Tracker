@@ -28,13 +28,28 @@ namespace TaskTracker.Infrastructure.Repositories
                 .FirstOrDefaultAsync(task => task.Id == id, cancellationToken);
         }
 
+        public IQueryable<TaskItem> Query()
+        {
+            return _context.Tasks.AsNoTracking();
+        }
+
+        public Task<int> CountAsync(IQueryable<TaskItem> query, CancellationToken cancellationToken = default)
+        {
+            return query.CountAsync(cancellationToken);
+        }
+
+        public Task<List<TaskItem>> ToListAsync(IQueryable<TaskItem> query, CancellationToken cancellationToken = default)
+        {
+            return query.ToListAsync(cancellationToken);
+        }
+
         public async Task<List<TaskItem>> ListAsync(
             string? titleContains = null,
             Status? status = null,
             TaskPriority? priority = null,
             CancellationToken cancellationToken = default)
         {
-            IQueryable<TaskItem> query = _context.Tasks.AsNoTracking();
+            IQueryable<TaskItem> query = Query();
 
             if (!string.IsNullOrWhiteSpace(titleContains))
             {
