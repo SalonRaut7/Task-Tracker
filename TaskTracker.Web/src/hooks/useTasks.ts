@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import CustomStore from "devextreme/data/custom_store";
 import type { TaskDto, CreateTaskDto, UpdateTaskDto } from "../types/task";
 import * as taskService from "../services/taskService";
+import type { TaskGridLoadOptions } from "../services/taskService";
 import { getErrorMessage } from "../components/tasks/taskHelpers";
 
 export function useTasks() {
-  const [tasks, setTasks] = useState<TaskDto[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [storeVersion, setStoreVersion] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
 
   const clearError = useCallback(() => {
@@ -13,19 +14,27 @@ export function useTasks() {
   }, []);
 
   const fetchTasks = useCallback(async () => {
-    setLoading(true);
-    clearError();
+    setStoreVersion((currentVersion) => currentVersion + 1);
+  }, []);
 
-    try {
-      const data = await taskService.getTasks();
-      setTasks(data);
-    } catch (err) {
-      console.error("Failed to fetch tasks:", err);
-      setErrorMessage(getErrorMessage(err, "Failed to fetch tasks."));
-    } finally {
-      setLoading(false);
-    }
-  }, [clearError]);
+  const tasks = useMemo(
+    () =>
+      new CustomStore<TaskDto, number>({
+        key: "id",
+        loadMode: "processed",
+        cacheRawData: false,
+        load: async (loadOptions: TaskGridLoadOptions) => {
+          try {
+            return await taskService.loadTasks(loadOptions);
+          } catch (err) {
+            console.error("Failed to load tasks:", err);
+            setErrorMessage(getErrorMessage(err, "Failed to fetch tasks."));
+            throw err;
+          }
+        },
+      }),
+    [storeVersion]
+  );
 
   const createTask = useCallback(async (dto: CreateTaskDto) => {
     await taskService.createTask(dto);
@@ -39,13 +48,8 @@ export function useTasks() {
     await taskService.deleteTask(id);
   }, []);
 
-  useEffect(() => {
-    void fetchTasks();
-  }, [fetchTasks]);
-
   return {
     tasks,
-    loading,
     errorMessage,
     setErrorMessage,
     clearError,

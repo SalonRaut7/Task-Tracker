@@ -25,10 +25,10 @@ namespace TaskTracker.API.Controllers
 
         // GET: api/tasks
         [HttpGet]
-        public async Task<ActionResult<List<TaskDto>>> GetAll([FromQuery] GetAllTasksQuery query, CancellationToken cancellationToken)
+        public async Task<ActionResult<PagedResultDto<TaskDto>>> GetAll([FromQuery] GetAllTasksQuery query, CancellationToken cancellationToken)
         {
-            var tasks = await _mediator.Send(query, cancellationToken);
-            return Ok(tasks);
+            var result = await _mediator.Send(query, cancellationToken);
+            return Ok(result);
         }
 
         // GET: api/tasks/{id}
