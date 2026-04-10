@@ -4,6 +4,7 @@ using TaskTracker.Infrastructure.Data;
 using TaskTracker.Infrastructure.Repositories;
 using TaskTracker.Application.Features.Tasks.Commands.CreateTask;
 using TaskTracker.Application.Mappings;
+using TaskTracker.Application.Options;
 using MediatR;
 using FluentValidation;
 using TaskTracker.Application.Behaviors;
@@ -22,6 +23,12 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 //Adding EF core PostgreSQL
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// ── Options ───────────────────────────────────────────────────────────────────
+// Binds "TaskDateRules" section from appsettings.json to TaskDateRulesOptions.
+// IOptions<TaskDateRulesOptions> is now injectable anywhere in the application.
+builder.Services.Configure<TaskDateRulesOptions>(
+    builder.Configuration.GetSection(TaskDateRulesOptions.SectionName));
 
 // Register MediatR handlers from Application Layer 
 // take the assembly where CreateTaskCommand exists, and scan that whole assembly

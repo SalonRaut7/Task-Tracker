@@ -16,6 +16,12 @@ export const priorityOptions = [
   { id: TaskPriority.Highest, name: "Highest" },
 ];
 
+export const endDateExtensionOptions = [
+  { id: 1, name: "+1 day" },
+  { id: 5, name: "+5 days" },
+  { id: 10, name: "+10 days" },
+];
+
 export const statusClassMap: Record<number, string> = {
   [Status.NotStarted]: "badge badge-gray",
   [Status.InProgress]: "badge badge-blue",

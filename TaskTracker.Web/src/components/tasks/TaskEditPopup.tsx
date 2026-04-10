@@ -10,11 +10,12 @@ import Form, {
 } from "devextreme-react/form";
 import Button from "devextreme-react/button";
 import type { TaskDto } from "../../types/task";
-import { priorityOptions, statusOptions } from "./taskOptions";
+import { endDateExtensionOptions, priorityOptions, statusOptions } from "./taskOptions";
 import {
   buildCreateDto,
   buildUpdateDto,
   createEmptyTaskDraft,
+  addDateOnlyDays,
   type TaskDraft,
 } from "./taskHelpers";
 import { isTaskValid, isValidDateRange, validateTask } from "./taskValidation";
@@ -50,6 +51,8 @@ export default function TaskEditPopup({
           startDate: task.startDate ?? null,
           endDate: task.endDate ?? null,
           createdAt: task.createdAt ?? null,
+          updatedAt: task.updatedAt ?? null,
+          endDateExtensionDays: null,
         });
       } else {
         setFormData(createEmptyTaskDraft());
@@ -60,14 +63,14 @@ export default function TaskEditPopup({
   const validationErrors = useMemo(() => {
     const dto =
       mode === "edit" ? buildUpdateDto(formData) : buildCreateDto(formData);
-    return validateTask(dto);
-  }, [formData, mode]);
+    return validateTask(dto, { mode, originalTask: task });
+  }, [formData, mode, task]);
 
   const isFormValid = useMemo(() => {
     const dto =
       mode === "edit" ? buildUpdateDto(formData) : buildCreateDto(formData);
-    return isTaskValid(dto);
-  }, [formData, mode]);
+    return isTaskValid(dto, { mode, originalTask: task });
+  }, [formData, mode, task]);
 
   const handleSave = async () => {
     if (!isFormValid) return;
@@ -92,6 +95,9 @@ export default function TaskEditPopup({
           colCount={2}
           labelLocation="top"
           onFieldDataChanged={(e) => {
+            if (e.dataField === "endDate") {
+              console.log("endDate raw value:", e.value, "| type:", typeof e.value, "| repr:", JSON.stringify(e.value));
+            }
             setFormData((prev) => ({
               ...prev,
               [e.dataField as string]: e.value,
@@ -173,16 +179,40 @@ export default function TaskEditPopup({
                 openOnFieldClick: true,
                 useMaskBehavior: true,
                 pickerType: "calendar",
+                disabled: formData.endDateExtensionDays != null,
+                readOnly: formData.endDateExtensionDays != null,
               }}
             >
               <Label text="End Date" />
               <CustomRule
                 message="Start date must be before or equal to end date."
                 validationCallback={() =>
-                  isValidDateRange(formData.startDate, formData.endDate)
+                  isValidDateRange(
+                    formData.startDate,
+                    formData.endDateExtensionDays != null && task?.endDate
+                      ? addDateOnlyDays(task.endDate, formData.endDateExtensionDays)
+                      : formData.endDate
+                  )
                 }
               />
             </Item>
+
+            {mode === "edit" && (
+              <Item
+                dataField="endDateExtensionDays"
+                editorType="dxSelectBox"
+                editorOptions={{
+                  items: endDateExtensionOptions,
+                  valueExpr: "id",
+                  displayExpr: "name",
+                  searchEnabled: false,
+                  showClearButton: true,
+                  placeholder: "Optional",
+                }}
+              >
+                <Label text="Extend End Date By" />
+              </Item>
+            )}
 
             {mode === "edit" && (
               <Item
@@ -196,6 +226,29 @@ export default function TaskEditPopup({
                 }}
               >
                 <Label text="Created On" />
+              </Item>
+            )}
+
+            {mode === "edit" && (
+              <Item
+                dataField="updatedAt"
+                editorType="dxDateBox"
+                editorOptions={{
+                  type: "date",
+                  displayFormat: "yyyy-MM-dd",
+                  disabled: true,
+                  readOnly: true,
+                }}
+              >
+                <Label text="Updated On" />
+              </Item>
+            )}
+
+            {mode === "edit" && (
+              <Item colSpan={2}>
+                <div className="task-popup-hint">
+                  Use the extension control to add +1, +5, or +10 days without changing the current end date directly.
+                </div>
               </Item>
             )}
           </GroupItem>

@@ -172,6 +172,17 @@ export default function TaskGrid({
       />
 
       <Column
+        dataField="updatedAt"
+        caption="Updated On"
+        dataType="date"
+        format="yyyy-MM-dd"
+        allowEditing={false}
+        minWidth={130}
+        allowSearch={false}
+        allowFiltering={true}
+      />
+
+      <Column
         caption="Actions"
         width={180}
         allowExporting={false}

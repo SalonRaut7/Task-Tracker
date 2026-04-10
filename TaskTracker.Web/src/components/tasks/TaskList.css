@@ -106,6 +106,16 @@
   border: 1px solid #fdba74;
 }
 
+.task-popup-hint {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .task-popup-actions {
   display: flex;
   justify-content: flex-end;
