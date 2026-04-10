@@ -13,4 +13,5 @@ public class UpdateTaskCommand : IRequest<TaskDto?>
     public TaskPriority Priority { get; set; }
     public DateOnly? StartDate { get; set; }
     public DateOnly? EndDate { get; set; }
+    public int? EndDateExtensionDays { get; set; }
 }

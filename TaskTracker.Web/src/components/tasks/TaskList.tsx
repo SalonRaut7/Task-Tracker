@@ -83,9 +83,9 @@ export default function TaskList() {
       clearError();
 
       const dto = popupMode === "add" ? buildCreateDto(data) : buildUpdateDto(data);
-      const errors = validateTask(dto);
+      const errors = validateTask(dto, { mode: popupMode, originalTask: selectedTask });
 
-      if (!isTaskValid(dto)) {
+      if (!isTaskValid(dto, { mode: popupMode, originalTask: selectedTask })) {
         const firstError = Object.values(errors)[0] ?? "Please correct the form errors.";
         showError(firstError);
         return;

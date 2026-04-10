@@ -14,10 +14,6 @@ namespace TaskTracker.Application.Mappings
             CreateMap<CreateTaskDto, CreateTaskCommand>();
             CreateMap<UpdateTaskDto, UpdateTaskCommand>();
 
-            // Commands -> Entity
-            CreateMap<CreateTaskCommand, TaskItem>();
-            CreateMap<UpdateTaskCommand, TaskItem>();
-
             // Entity -> DTO
             CreateMap<TaskItem, TaskDto>();
         }

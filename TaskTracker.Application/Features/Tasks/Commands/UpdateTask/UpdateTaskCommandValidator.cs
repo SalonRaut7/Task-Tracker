@@ -4,6 +4,8 @@ namespace TaskTracker.Application.Features.Tasks.Commands.UpdateTask
 {
     public class UpdateTaskCommandValidator : AbstractValidator<UpdateTaskCommand>
     {
+        private static readonly int[] AllowedEndDateExtensions = [1, 5, 10];
+
         public UpdateTaskCommandValidator()
         {
             RuleFor(x => x.Id)
@@ -26,6 +28,18 @@ namespace TaskTracker.Application.Features.Tasks.Commands.UpdateTask
                 .LessThanOrEqualTo(x => x.EndDate)
                 .When(x => x.StartDate.HasValue && x.EndDate.HasValue)
                 .WithMessage("Start date must be before or equal to end date.");
+
+            RuleFor(x => x.EndDateExtensionDays)
+                .Must(x => !x.HasValue || AllowedEndDateExtensions.Contains(x.Value))
+                .WithMessage("EndDateExtensionDays must be one of: 1, 5, or 10.");
+
+            RuleFor(x => x)
+                .Must(x => !(x.EndDate.HasValue && x.EndDateExtensionDays.HasValue))
+                .WithMessage("Provide either EndDate or EndDateExtensionDays, not both.");
+
+            RuleFor(x => x)
+                .Must(x => !x.EndDateExtensionDays.HasValue || x.EndDateExtensionDays.Value > 0)
+                .WithMessage("EndDateExtensionDays must be a positive number of days.");
         }
     }
 }

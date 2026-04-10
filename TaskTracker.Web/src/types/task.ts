@@ -2,8 +2,8 @@ export enum Status {
   NotStarted,
   InProgress,
   Completed,
-  Cancelled,
-  OnHold
+  OnHold,
+  Cancelled
 }
 
 export enum TaskPriority {
@@ -23,6 +23,7 @@ export interface TaskDto {
   startDate: string | null;  
   endDate: string | null;    
   createdAt: string;          
+  updatedAt: string;
 }
 
 export interface CreateTaskDto {
@@ -32,6 +33,7 @@ export interface CreateTaskDto {
   priority?: TaskPriority;
   startDate?: string | null;
   endDate?: string | null;
+  endDateExtensionDays?: number | null;
 }
 
 export interface UpdateTaskDto {
@@ -41,4 +43,5 @@ export interface UpdateTaskDto {
   priority?: TaskPriority;
   startDate?: string | null;
   endDate?: string | null;
+  endDateExtensionDays?: number | null;
 }
