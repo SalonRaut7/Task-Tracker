@@ -14,13 +14,13 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
     private readonly TaskDateRulesOptions _taskDateRules;
 
     public UpdateTaskCommandHandler(
-        ITaskRepository               taskRepository,
-        IMapper                       mapper,
+        ITaskRepository taskRepository,
+        IMapper mapper,
         IOptions<TaskDateRulesOptions> taskDateRules)
     {
         _taskRepository = taskRepository;
-        _mapper         = mapper;
-        _taskDateRules  = taskDateRules.Value;
+        _mapper = mapper;
+        _taskDateRules = taskDateRules.Value;
     }
 
     public async Task<TaskDto?> Handle(

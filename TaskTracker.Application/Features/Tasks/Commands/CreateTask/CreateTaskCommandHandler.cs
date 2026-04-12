@@ -10,18 +10,18 @@ namespace TaskTracker.Application.Features.Tasks.Commands.CreateTask;
 
 public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskDto>
 {
-    private readonly ITaskRepository     _taskRepository;
-    private readonly IMapper             _mapper;
+    private readonly ITaskRepository _taskRepository;
+    private readonly IMapper _mapper;
     private readonly TaskDateRulesOptions _taskDateRules;
 
     public CreateTaskCommandHandler(
-        ITaskRepository              taskRepository,
-        IMapper                      mapper,
+        ITaskRepository taskRepository,
+        IMapper mapper,
         IOptions<TaskDateRulesOptions> taskDateRules)
     {
         _taskRepository = taskRepository;
-        _mapper         = mapper;
-        _taskDateRules  = taskDateRules.Value;
+        _mapper = mapper;
+        _taskDateRules = taskDateRules.Value;
     }
 
     public async Task<TaskDto> Handle(
