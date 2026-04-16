@@ -5,6 +5,7 @@ import type {
   Status,
   TaskPriority,
 } from "../types/task";
+import { apiRequest } from "./apiClient";
 
 export type TaskGridLoadOptions = {
   skip?: number;
@@ -16,15 +17,7 @@ export type TaskGridLoadResult = {
   totalCount: number;
 };
 
-type ProblemDetailsResponse = {
-  title?: string;
-  detail?: string;
-  status?: number;
-  errors?: Record<string, string[]>;
-};
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-const BASE_URL = `${API_BASE_URL}/api/Tasks`;
+const BASE_URL = "/api/Tasks";
 
 let pendingTaskLoad:
   | { requestKey: string; promise: Promise<TaskGridLoadResult> }
@@ -68,45 +61,6 @@ const buildLoadUrl = (
   return params.toString() ? `${BASE_URL}?${params.toString()}` : BASE_URL;
 };
 
-const getErrorMessage = async (res: Response): Promise<string> => {
-  try {
-    const contentType = res.headers.get("content-type") ?? "";
-
-    if (contentType.includes("application/json")) {
-      const data = (await res.json()) as ProblemDetailsResponse;
-
-      if (data.errors) {
-        return Object.entries(data.errors)
-          .flatMap(([field, messages]) =>
-            messages.map((msg) => `${field}: ${msg}`)
-          )
-          .join("\n");
-      }
-
-      return data.detail || data.title || `HTTP error ${res.status}`;
-    }
-
-    const text = await res.text();
-    return text || `HTTP error ${res.status}`;
-  } catch {
-    return `HTTP error ${res.status}`;
-  }
-};
-
-const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
-  const res = await fetch(url, init);
-
-  if (!res.ok) {
-    throw new Error(await getErrorMessage(res));
-  }
-
-  if (res.status === 204) {
-    return undefined as T;
-  }
-
-  return res.json() as Promise<T>;
-};
-
 export const getTasks = async (
   titleContains?: string,
   status?: Status,
@@ -129,7 +83,10 @@ export const loadTasks = async (
   }
 
   const currentPromise = (async () => {
-    const payload = await request<Record<string, unknown>>(requestUrl);
+    const payload = await apiRequest<Record<string, unknown>>(requestUrl, {
+      method: "GET",
+      requiresAuth: true,
+    });
 
     const data =
       (Array.isArray(payload.data)
@@ -165,10 +122,10 @@ export const loadTasks = async (
 };
 
 export const createTask = async (task: CreateTaskDto): Promise<TaskDto> => {
-  return request<TaskDto>(BASE_URL, {
+  return apiRequest<TaskDto>(BASE_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(task),
+    body: task,
+    requiresAuth: true,
   });
 };
 
@@ -176,15 +133,16 @@ export const updateTask = async (
   id: number,
   task: UpdateTaskDto
 ): Promise<TaskDto> => {
-  return request<TaskDto>(`${BASE_URL}/${id}`, {
+  return apiRequest<TaskDto>(`${BASE_URL}/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(task),
+    body: task,
+    requiresAuth: true,
   });
 };
 
 export const deleteTask = async (id: number): Promise<void> => {
-  await request<void>(`${BASE_URL}/${id}`, {
+  await apiRequest<void>(`${BASE_URL}/${id}`, {
     method: "DELETE",
+    requiresAuth: true,
   });
 };

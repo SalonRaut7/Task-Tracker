@@ -1,6 +1,7 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using TaskTracker.Application.Authorization;
 
 namespace TaskTracker.API.Middlewares;
 
@@ -73,6 +74,26 @@ public class ExceptionHandlingMiddleware
                 exception: ex,
                 logLevel: LogLevel.Warning);
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            await WriteProblemDetailsAsync(
+                context,
+                statusCode: StatusCodes.Status401Unauthorized,
+                title: "Authentication is required.",
+                exception: ex,
+                logLevel: LogLevel.Warning,
+                includeExceptionMessage: true);
+        }
+        catch (ForbiddenAccessException ex)
+        {
+            await WriteProblemDetailsAsync(
+                context,
+                statusCode: StatusCodes.Status403Forbidden,
+                title: "You do not have permission to perform this action.",
+                exception: ex,
+                logLevel: LogLevel.Warning,
+                includeExceptionMessage: true);
+        }
         catch (DbUpdateException ex)
         {
             await WriteProblemDetailsAsync(
@@ -98,7 +119,8 @@ public class ExceptionHandlingMiddleware
         int statusCode,
         string title,
         Exception exception,
-        LogLevel logLevel)
+        LogLevel logLevel,
+        bool includeExceptionMessage = false)
     {
         if (context.Response.HasStarted)
             throw exception;
@@ -115,6 +137,7 @@ public class ExceptionHandlingMiddleware
         {
             Status = statusCode,
             Title = title,
+            Detail = includeExceptionMessage ? exception.Message : null,
             Instance = context.Request.Path
         };
 
