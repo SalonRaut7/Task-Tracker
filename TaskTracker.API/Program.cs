@@ -1,15 +1,24 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using TaskTracker.Domain.Interfaces;
 using TaskTracker.Infrastructure.Data;
 using TaskTracker.Infrastructure.Repositories;
+using TaskTracker.Infrastructure;
 using TaskTracker.Application.Features.Tasks.Commands.CreateTask;
 using TaskTracker.Application.Mappings;
 using TaskTracker.Application.Options;
-using MediatR;
-using FluentValidation;
 using TaskTracker.Application.Behaviors;
 using TaskTracker.API.Middlewares;
+using TaskTracker.API.Authorization;
+using TaskTracker.Domain.Entities.Identity;
+using TaskTracker.Infrastructure.Data.Seed;
+using MediatR;
+using FluentValidation;
 using Serilog;
+using Microsoft.Extensions.Options;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,41 +29,68 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Services(services)
     .Enrich.FromLogContext());
 
-//Adding EF core PostgreSQL
+// ── Database ─────────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// ── Options ───────────────────────────────────────────────────────────────────
-// Binds "TaskDateRules" section from appsettings.json to TaskDateRulesOptions.
-// IOptions<TaskDateRulesOptions> is now injectable anywhere in the application.
+// ── Options ──────────────────────────────────────────────────────
 builder.Services.Configure<TaskDateRulesOptions>(
     builder.Configuration.GetSection(TaskDateRulesOptions.SectionName));
+builder.Services.Configure<AdminSeedOptions>(
+    builder.Configuration.GetSection(AdminSeedOptions.SectionName));
 
-// Register MediatR handlers from Application Layer 
-// take the assembly where CreateTaskCommand exists, and scan that whole assembly
-// Since CreateTaskCommand is in TaskTracker.Application, MediatR scans the entire Application project assembly.
+// ── Infrastructure (Identity, JWT services, Email, OTP) ──────────
+builder.Services.AddInfrastructure(builder.Configuration);
+
+// ── JWT Authentication ───────────────────────────────────────────
+var jwtSettings = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()!;
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidIssuer = jwtSettings.Issuer,
+        ValidateAudience = true,
+        ValidAudience = jwtSettings.Audience,
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SecretKey)),
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero   // no grace period — exact expiry
+    };
+});
+
+// ── Authorization (Permission-based policies) ────────────────────
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
+// ── MediatR + FluentValidation ───────────────────────────────────
 builder.Services.AddMediatR(typeof(CreateTaskCommand).Assembly);
-
-// Register FluentValidation validators from Application Layer
 builder.Services.AddValidatorsFromAssembly(typeof(CreateTaskCommand).Assembly);
-//here CreateTaskCommand is used as a marker type to indicate the assembly where the validators are located. You can replace it with any other type from the same assembly if needed.
-//since CreateTaskCommand is in the Application layer, it will ensure that all validators defined in that assembly are registered with the dependency injection container.
-
-// Register pipeline behaviors
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(AuthorizationBehavior<,>));
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
-//Adding Mapper
+// ── AutoMapper ───────────────────────────────────────────────────
 builder.Services.AddAutoMapper(typeof(AutoMapperProfile).Assembly);
 
-//Register Domain Interfaces -> Infrastructure  implementation
+// ── Repositories ─────────────────────────────────────────────────
 builder.Services.AddScoped<ITaskRepository, TaskRepository>();
 
+// ── HTTP Context ─────────────────────────────────────────────────
+builder.Services.AddHttpContextAccessor();
+
+// ── Controllers + Swagger ────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-//cors configuration
+// ── CORS ─────────────────────────────────────────────────────────
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -68,14 +104,38 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// ── Seed roles, permissions, and SuperAdmin ──────────────────────
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var roleManager = services.GetRequiredService<Microsoft.AspNetCore.Identity.RoleManager<ApplicationRole>>();
+        var userManager = services.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<ApplicationUser>>();
+        var dbContext = services.GetRequiredService<AppDbContext>();
+        var adminSeedOptions = services.GetRequiredService<IOptions<AdminSeedOptions>>().Value;
+        var logger = services.GetRequiredService<ILogger<Program>>();
 
-app.UseSerilogRequestLogging(); // logs HTTP requests
+        await IdentitySeeder.SeedAsync(roleManager, userManager, dbContext, adminSeedOptions, logger);
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred while seeding the database.");
+    }
+}
+
+// ── Middleware pipeline ──────────────────────────────────────────
+app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSwagger();
 app.UseSwaggerUI();
 app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
+
+app.UseAuthentication();    // MUST come before UseAuthorization()
 app.UseAuthorization();
+
 app.MapControllers();
 
 
