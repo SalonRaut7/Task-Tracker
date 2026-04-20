@@ -194,6 +194,10 @@ export function CommentsPage() {
           rowAlternationEnabled
           hoverStateEnabled
           onRowClick={(event) => {
+            if (event.rowType !== "data" || !event.data) {
+              return;
+            }
+
             const comment = event.data as BackendComment;
             setSelectedComment(comment);
             setEditContent(comment.content);

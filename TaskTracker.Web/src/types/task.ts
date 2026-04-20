@@ -46,7 +46,6 @@ export interface CreateTaskDto {
 }
 
 export interface UpdateTaskDto {
-  projectId: string;
   epicId?: string | null;
   sprintId?: string | null;
   assigneeId?: string | null;

@@ -25,7 +25,6 @@ namespace TaskTracker.Application.DTOs
     // For updating a task
     public class UpdateTaskDto : TaskBaseDto
     {
-        public Guid ProjectId { get; set; }
         public Guid? EpicId { get; set; }
         public Guid? SprintId { get; set; }
         public string? AssigneeId { get; set; }

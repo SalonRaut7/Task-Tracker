@@ -19,11 +19,11 @@ public class GetAllTasksQueryValidator : AbstractValidator<GetAllTasksQuery>
             .When(x => x.SprintId.HasValue);
 
         RuleFor(x => x.AssigneeId)
-            .Must(value => string.IsNullOrWhiteSpace(value) || !string.IsNullOrWhiteSpace(value.Trim()))
+            .Must(value => value == null || value.Trim().Length > 0)
             .WithMessage("AssigneeId cannot be whitespace");
 
         RuleFor(x => x.ReporterId)
-            .Must(value => string.IsNullOrWhiteSpace(value) || !string.IsNullOrWhiteSpace(value.Trim()))
+            .Must(value => value == null || value.Trim().Length > 0)
             .WithMessage("ReporterId cannot be whitespace");
 
         RuleFor(x => x.ProjectId)

@@ -139,7 +139,6 @@ function toCreateDto(form: TaskForm): CreateTaskDto {
 
 function toUpdateDto(form: TaskForm): UpdateTaskDto {
   return {
-    projectId: form.projectId,
     epicId: form.epicId.trim(),
     sprintId: form.sprintId.trim(),
     assigneeId: form.assigneeId.trim() || null,
