@@ -64,12 +64,12 @@ interface AppContextValue {
   verifyEmail: (email: string, otpCode: string) => Promise<VerifyEmailResponse>;
   resendOtp: (email: string) => Promise<string>;
   logout: () => Promise<void>;
-  refreshWorkspaceData: () => Promise<void>;
+  refreshWorkspaceData: (options?: { includeTasks?: boolean }) => Promise<void>;
   toggleTheme: () => void;
   toggleSidebar: () => void;
   addTask: (task: CreateTaskDto) => Promise<TaskDto>;
-  updateTask: (taskId: number, updates: UpdateTaskDto) => Promise<TaskDto>;
-  deleteTask: (taskId: number) => Promise<void>;
+  updateTask: (taskId: number, projectId: string, updates: UpdateTaskDto) => Promise<TaskDto>;
+  deleteTask: (taskId: number, projectId: string) => Promise<void>;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
 }
@@ -277,21 +277,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [clearSession]);
 
-  const refreshWorkspaceData = useCallback(async () => {
+  const refreshWorkspaceData = useCallback(async (options?: { includeTasks?: boolean }) => {
     if (!localStorage.getItem(ACCESS_TOKEN_KEY)) {
       return;
     }
+
+    const includeTasks = options?.includeTasks ?? true;
 
     setLoadingData(true);
 
     try {
       const [taskResponse, projectResponse] = await Promise.all([
-        loadTasks({ skip: 0, take: 500 }),
+        includeTasks ? loadTasks({ skip: 0, take: 500 }) : Promise.resolve(null),
         getProjects(),
       ]);
 
-      setTasks(taskResponse.data);
-      setNotifications(buildNotifications(taskResponse.data));
+      if (taskResponse) {
+        setTasks(taskResponse.data);
+        setNotifications(buildNotifications(taskResponse.data));
+      }
 
       setProjects(projectResponse.items);
       setProjectsApiAvailable(projectResponse.available);
@@ -383,32 +387,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setNotifications(buildNotifications(next));
       return next;
     });
-    void refreshWorkspaceData();
     return created;
   };
 
   const updateTask = async (
     taskId: number,
+    projectId: string,
     updates: UpdateTaskDto
   ): Promise<TaskDto> => {
-    const updated = await updateTaskRequest(taskId, updates);
+    const updated = await updateTaskRequest(taskId, projectId, updates);
     setTasks((prev) => {
       const next = prev.map((task) => (task.id === taskId ? updated : task));
       setNotifications(buildNotifications(next));
       return next;
     });
-    void refreshWorkspaceData();
     return updated;
   };
 
-  const deleteTask = async (taskId: number): Promise<void> => {
-    await deleteTaskRequest(taskId);
+  const deleteTask = async (taskId: number, projectId: string): Promise<void> => {
+    await deleteTaskRequest(taskId, projectId);
     setTasks((prev) => {
       const next = prev.filter((task) => task.id !== taskId);
       setNotifications(buildNotifications(next));
       return next;
     });
-    void refreshWorkspaceData();
   };
 
   const markNotificationRead = (id: string) => {

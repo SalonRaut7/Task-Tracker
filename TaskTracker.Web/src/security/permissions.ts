@@ -11,6 +11,11 @@ export const AppPermissions = {
   UsersView: "Users.View",
   UsersManage: "Users.Manage",
 
+  OrganizationsView: "Organizations.View",
+  OrganizationsCreate: "Organizations.Create",
+  OrganizationsUpdate: "Organizations.Update",
+  OrganizationsDelete: "Organizations.Delete",
+
   ProjectsView: "Projects.View",
   ProjectsCreate: "Projects.Create",
   ProjectsUpdate: "Projects.Update",
@@ -27,7 +32,14 @@ export const AppPermissions = {
   SprintsCreate: "Sprints.Create",
   SprintsManage: "Sprints.Manage",
 
+  EpicsView: "Epics.View",
+  EpicsCreate: "Epics.Create",
+  EpicsUpdate: "Epics.Update",
+  EpicsDelete: "Epics.Delete",
+
+  CommentsView: "Comments.View",
   CommentsAdd: "Comments.Add",
+  CommentsUpdate: "Comments.Update",
   CommentsDelete: "Comments.Delete",
 } as const;
 
@@ -49,6 +61,10 @@ export function getPermissionsForRole(role: string): AppPermission[] {
       return [
         AppPermissions.UsersView,
         AppPermissions.UsersManage,
+        AppPermissions.OrganizationsView,
+        AppPermissions.OrganizationsCreate,
+        AppPermissions.OrganizationsUpdate,
+        AppPermissions.OrganizationsDelete,
         AppPermissions.ProjectsView,
         AppPermissions.ProjectsCreate,
         AppPermissions.ProjectsUpdate,
@@ -62,13 +78,20 @@ export function getPermissionsForRole(role: string): AppPermission[] {
         AppPermissions.SprintsView,
         AppPermissions.SprintsCreate,
         AppPermissions.SprintsManage,
+        AppPermissions.EpicsView,
+        AppPermissions.EpicsCreate,
+        AppPermissions.EpicsUpdate,
+        AppPermissions.EpicsDelete,
+        AppPermissions.CommentsView,
         AppPermissions.CommentsAdd,
+        AppPermissions.CommentsUpdate,
         AppPermissions.CommentsDelete,
       ];
 
     case AppRoles.ProjectManager:
       return [
         AppPermissions.UsersView,
+        AppPermissions.OrganizationsView,
         AppPermissions.ProjectsView,
         AppPermissions.ProjectsCreate,
         AppPermissions.ProjectsUpdate,
@@ -81,7 +104,13 @@ export function getPermissionsForRole(role: string): AppPermission[] {
         AppPermissions.SprintsView,
         AppPermissions.SprintsCreate,
         AppPermissions.SprintsManage,
+        AppPermissions.EpicsView,
+        AppPermissions.EpicsCreate,
+        AppPermissions.EpicsUpdate,
+        AppPermissions.EpicsDelete,
+        AppPermissions.CommentsView,
         AppPermissions.CommentsAdd,
+        AppPermissions.CommentsUpdate,
         AppPermissions.CommentsDelete,
       ];
 
@@ -93,7 +122,10 @@ export function getPermissionsForRole(role: string): AppPermission[] {
         AppPermissions.TasksUpdate,
         AppPermissions.TasksChangeStatus,
         AppPermissions.SprintsView,
+        AppPermissions.EpicsView,
+        AppPermissions.CommentsView,
         AppPermissions.CommentsAdd,
+        AppPermissions.CommentsUpdate,
       ];
 
     case AppRoles.QA:
@@ -102,14 +134,19 @@ export function getPermissionsForRole(role: string): AppPermission[] {
         AppPermissions.TasksView,
         AppPermissions.TasksChangeStatus,
         AppPermissions.SprintsView,
+        AppPermissions.EpicsView,
+        AppPermissions.CommentsView,
         AppPermissions.CommentsAdd,
       ];
 
     case AppRoles.Viewer:
       return [
+        AppPermissions.OrganizationsView,
         AppPermissions.ProjectsView,
         AppPermissions.TasksView,
         AppPermissions.SprintsView,
+        AppPermissions.EpicsView,
+        AppPermissions.CommentsView,
       ];
 
     default:

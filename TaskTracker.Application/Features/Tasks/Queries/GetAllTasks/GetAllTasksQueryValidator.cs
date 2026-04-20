@@ -6,6 +6,34 @@ public class GetAllTasksQueryValidator : AbstractValidator<GetAllTasksQuery>
 {
     public GetAllTasksQueryValidator()
     {
+        RuleFor(x => x.ProjectId)
+            .NotEmpty().WithMessage("ProjectId cannot be empty GUID when provided")
+            .When(x => x.ProjectId.HasValue);
+
+        RuleFor(x => x.EpicId)
+            .NotEmpty().WithMessage("EpicId cannot be empty GUID when provided")
+            .When(x => x.EpicId.HasValue);
+
+        RuleFor(x => x.SprintId)
+            .NotEmpty().WithMessage("SprintId cannot be empty GUID when provided")
+            .When(x => x.SprintId.HasValue);
+
+        RuleFor(x => x.AssigneeId)
+            .Must(value => string.IsNullOrWhiteSpace(value) || !string.IsNullOrWhiteSpace(value.Trim()))
+            .WithMessage("AssigneeId cannot be whitespace");
+
+        RuleFor(x => x.ReporterId)
+            .Must(value => string.IsNullOrWhiteSpace(value) || !string.IsNullOrWhiteSpace(value.Trim()))
+            .WithMessage("ReporterId cannot be whitespace");
+
+        RuleFor(x => x.ProjectId)
+            .NotNull().WithMessage("ProjectId is required when filtering by EpicId")
+            .When(x => x.EpicId.HasValue);
+
+        RuleFor(x => x.ProjectId)
+            .NotNull().WithMessage("ProjectId is required when filtering by SprintId")
+            .When(x => x.SprintId.HasValue);
+
         RuleFor(x => x.TitleContains)
             .MaximumLength(100).WithMessage("Title filter cannot exceed 100 characters")
             .When(x => !string.IsNullOrWhiteSpace(x.TitleContains));

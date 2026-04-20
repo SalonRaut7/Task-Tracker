@@ -21,6 +21,11 @@ public class DeleteTaskCommandHandler : IRequestHandler<DeleteTaskCommand, bool>
             return false;
         }
 
+        if (task.ProjectId != request.ProjectId)
+        {
+            return false;
+        }
+
         await _taskRepository.DeleteAsync(task, cancellationToken);
 
         return true;

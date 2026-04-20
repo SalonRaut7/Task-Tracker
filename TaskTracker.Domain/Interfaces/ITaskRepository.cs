@@ -7,6 +7,10 @@ namespace TaskTracker.Domain.Interfaces
     {
         Task<TaskItem?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
         Task<TaskItem?> GetByIdForUpdateAsync(int id, CancellationToken cancellationToken = default);
+        Task<bool> ProjectExistsAsync(Guid projectId, CancellationToken cancellationToken = default);
+        Task<bool> EpicBelongsToProjectAsync(Guid epicId, Guid projectId, CancellationToken cancellationToken = default);
+        Task<bool> SprintBelongsToProjectAsync(Guid sprintId, Guid projectId, CancellationToken cancellationToken = default);
+        Task<bool> CanAssignUserToProjectAsync(string userId, Guid projectId, CancellationToken cancellationToken = default);
         IQueryable<TaskItem> Query();
         Task<int> CountAsync(IQueryable<TaskItem> query, CancellationToken cancellationToken = default);
         Task<List<TaskItem>> ToListAsync(IQueryable<TaskItem> query, CancellationToken cancellationToken = default);

@@ -16,13 +16,19 @@ namespace TaskTracker.Application.DTOs
     // For creating a task
     public class CreateTaskDto : TaskBaseDto
     {
-        //No fields needed here yet, but this class is ready for future create-specific properties without affecting update DTOs
+        public Guid ProjectId { get; set; }
+        public Guid? EpicId { get; set; }
+        public Guid? SprintId { get; set; }
+        public string? AssigneeId { get; set; }
     }
 
     // For updating a task
     public class UpdateTaskDto : TaskBaseDto
     {
-        // Only extra field specific to update
+        public Guid ProjectId { get; set; }
+        public Guid? EpicId { get; set; }
+        public Guid? SprintId { get; set; }
+        public string? AssigneeId { get; set; }
         public int? EndDateExtensionDays { get; set; }
     }
 
@@ -31,6 +37,11 @@ namespace TaskTracker.Application.DTOs
     {
         // Only extra fields specific to response
         public int Id { get; set; }
+        public Guid ProjectId { get; set; }
+        public Guid? EpicId { get; set; }
+        public Guid? SprintId { get; set; }
+        public string? AssigneeId { get; set; }
+        public string ReporterId { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }

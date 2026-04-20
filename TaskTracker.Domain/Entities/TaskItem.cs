@@ -1,4 +1,5 @@
 using TaskTracker.Domain.Enums;
+using TaskTracker.Domain.Entities.Identity;
 
 namespace TaskTracker.Domain.Entities
 {
@@ -6,6 +7,11 @@ namespace TaskTracker.Domain.Entities
     {
         // Private setters — state can only be changed through domain methods
         public int Id { get; private set; }
+        public Guid ProjectId { get; private set; }
+        public Guid? EpicId { get; private set; }
+        public Guid? SprintId { get; private set; }
+        public string? AssigneeId { get; private set; }
+        public string ReporterId { get; private set; } = string.Empty;
         public string Title { get; private set; } = string.Empty;
         public string? Description { get; private set; }
         public Status Status { get; private set; } = Status.NotStarted;
@@ -15,33 +21,50 @@ namespace TaskTracker.Domain.Entities
         public DateTime CreatedAt { get; private set; }
         public DateTime UpdatedAt { get; private set; }
 
+        public Project Project { get; private set; } = null!;
+        public Epic? Epic { get; private set; }
+        public Sprint? Sprint { get; private set; }
+        public ApplicationUser? Assignee { get; private set; }
+        public ApplicationUser Reporter { get; private set; } = null!;
+        public ICollection<Comment> Comments { get; private set; } = new List<Comment>();
+
         // Required by EF Core — not for external use
         private TaskItem() { }
 
         public static TaskItem Create(
+            Guid projectId,
+            Guid? epicId,
+            Guid? sprintId,
+            string? assigneeId,
+            string reporterId,
             string title,
             string? description,
             Status status,
             TaskPriority priority,
             DateOnly? startDate,
             DateOnly? endDate,
-            int defaultSprintDurationDays,
             DateTime utcNow)
         {
-            var normalizedNow      = NormalizeUtc(utcNow);
-            var effectiveStartDate = startDate ?? DateOnly.FromDateTime(normalizedNow);
-            var effectiveEndDate   = endDate   ?? effectiveStartDate.AddDays(defaultSprintDurationDays);
+            var normalizedNow = NormalizeUtc(utcNow);
 
-            EnsureStartBeforeOrEqualEnd(effectiveStartDate, effectiveEndDate);
+            if (string.IsNullOrWhiteSpace(reporterId))
+                throw new InvalidOperationException("Reporter is required.");
+
+            EnsureStartBeforeOrEqualEnd(startDate, endDate);
 
             return new TaskItem
             {
+                ProjectId   = projectId,
+                EpicId      = epicId,
+                SprintId    = sprintId,
+                AssigneeId  = string.IsNullOrWhiteSpace(assigneeId) ? null : assigneeId.Trim(),
+                ReporterId  = reporterId.Trim(),
                 Title       = title,
                 Description = description,
                 Status      = status,
                 Priority    = priority,
-                StartDate   = effectiveStartDate,
-                EndDate     = effectiveEndDate,
+                StartDate   = startDate,
+                EndDate     = endDate,
                 CreatedAt   = normalizedNow,
                 UpdatedAt   = normalizedNow,
             };
@@ -52,6 +75,9 @@ namespace TaskTracker.Domain.Entities
             string? description,
             Status status,
             TaskPriority priority,
+            Guid? epicId,
+            Guid? sprintId,
+            string? assigneeId,
             DateOnly? startDate,
             DateOnly? endDate,
             int? endDateExtensionDays,
@@ -85,6 +111,9 @@ namespace TaskTracker.Domain.Entities
             Description = description;
             Status      = status;
             Priority    = priority;
+            EpicId      = epicId;
+            SprintId    = sprintId;
+            AssigneeId  = string.IsNullOrWhiteSpace(assigneeId) ? null : assigneeId.Trim();
             StartDate   = startDate;
             EndDate     = endDate;
             UpdatedAt   = normalizedNow;

@@ -52,10 +52,16 @@ public static class DependencyInjection
         services.AddScoped<IEmailSender, EmailSender>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IUserResourceAccessService, UserResourceAccessService>();
-        
-            // ── Repositories ─────────────────────────────────────────
-            services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-            services.AddScoped<IOtpRepository, OtpRepository>();
+        services.AddScoped<ITaskRepository, TaskRepository>();
+        services.AddScoped<IOrganizationRepository, OrganizationRepository>();
+        services.AddScoped<IProjectRepository, ProjectRepository>();
+        services.AddScoped<IEpicRepository, EpicRepository>();
+        services.AddScoped<ISprintRepository, SprintRepository>();
+        services.AddScoped<ICommentRepository, CommentRepository>();
+
+        // ── Repositories ─────────────────────────────────────────
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<IOtpRepository, OtpRepository>();
 
         return services;
     }

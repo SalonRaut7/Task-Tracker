@@ -13,11 +13,6 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
         builder.Property(u => u.CreatedAt).IsRequired();
         builder.Property(u => u.UpdatedAt).IsRequired();
 
-        builder.HasOne(u => u.Organization)
-               .WithMany(o => o.Members)
-               .HasForeignKey(u => u.OrganizationId)
-               .OnDelete(DeleteBehavior.SetNull);
-
         builder.HasMany(u => u.RefreshTokens)
                .WithOne(rt => rt.User)
                .HasForeignKey(rt => rt.UserId)

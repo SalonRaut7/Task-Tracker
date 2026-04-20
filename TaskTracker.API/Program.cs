@@ -79,9 +79,6 @@ builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBeh
 // ── AutoMapper ───────────────────────────────────────────────────
 builder.Services.AddAutoMapper(typeof(AutoMapperProfile).Assembly);
 
-// ── Repositories ─────────────────────────────────────────────────
-builder.Services.AddScoped<ITaskRepository, TaskRepository>();
-
 // ── HTTP Context ─────────────────────────────────────────────────
 builder.Services.AddHttpContextAccessor();
 

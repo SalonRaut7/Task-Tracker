@@ -20,6 +20,11 @@ public class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, TaskDto
     {
         var task = await _taskRepository.GetByIdAsync(request.Id, cancellationToken);
 
-        return task is null ? null : _mapper.Map<TaskDto>(task);
+        if (task is null || task.ProjectId != request.ProjectId)
+        {
+            return null;
+        }
+
+        return _mapper.Map<TaskDto>(task);
     }
 }

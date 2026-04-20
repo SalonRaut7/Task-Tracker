@@ -6,6 +6,21 @@ namespace TaskTracker.Application.Features.Tasks.Commands.CreateTask
     {
         public CreateTaskCommandValidator()
         {
+            RuleFor(x => x.ProjectId)
+                .NotEmpty().WithMessage("ProjectId is required");
+
+            RuleFor(x => x.EpicId)
+                .NotEmpty().WithMessage("EpicId cannot be empty GUID when provided")
+                .When(x => x.EpicId.HasValue);
+
+            RuleFor(x => x.SprintId)
+                .NotEmpty().WithMessage("SprintId cannot be empty GUID when provided")
+                .When(x => x.SprintId.HasValue);
+
+            RuleFor(x => x.AssigneeId)
+                .Must(value => string.IsNullOrWhiteSpace(value) || !string.IsNullOrWhiteSpace(value.Trim()))
+                .WithMessage("AssigneeId cannot be whitespace");
+
             RuleFor(x => x.Title)
                 .NotEmpty().WithMessage("Title is required")
                 .MaximumLength(100).WithMessage("Title cannot exceed 100 characters");

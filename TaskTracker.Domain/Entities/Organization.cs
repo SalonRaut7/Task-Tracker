@@ -2,7 +2,7 @@ using TaskTracker.Domain.Entities.Identity;
 
 namespace TaskTracker.Domain.Entities;
 
-/// Top-level tenant entity. Projects and users belong to an organization.
+/// Top-level tenant entity. Projects and memberships belong to an organization.
 public class Organization
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -13,6 +13,6 @@ public class Organization
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation
-    public ICollection<ApplicationUser> Members { get; set; } = new List<ApplicationUser>();
     public ICollection<Project> Projects { get; set; } = new List<Project>();
+    public ICollection<UserOrganization> UserMemberships { get; set; } = new List<UserOrganization>();
 }

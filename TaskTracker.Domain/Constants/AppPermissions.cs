@@ -8,6 +8,12 @@ public static class AppPermissions
     public const string UsersView = "Users.View";
     public const string UsersManage = "Users.Manage";
 
+    // ── Organizations ────────────────────────────────────────
+    public const string OrganizationsView = "Organizations.View";
+    public const string OrganizationsCreate = "Organizations.Create";
+    public const string OrganizationsUpdate = "Organizations.Update";
+    public const string OrganizationsDelete = "Organizations.Delete";
+
     // ── Projects ─────────────────────────────────────────────
     public const string ProjectsView = "Projects.View";
     public const string ProjectsCreate = "Projects.Create";
@@ -27,18 +33,28 @@ public static class AppPermissions
     public const string SprintsCreate = "Sprints.Create";
     public const string SprintsManage = "Sprints.Manage";
 
+    // ── Epics ────────────────────────────────────────────────
+    public const string EpicsView = "Epics.View";
+    public const string EpicsCreate = "Epics.Create";
+    public const string EpicsUpdate = "Epics.Update";
+    public const string EpicsDelete = "Epics.Delete";
+
     // ── Comments ─────────────────────────────────────────────
+    public const string CommentsView = "Comments.View";
     public const string CommentsAdd = "Comments.Add";
+    public const string CommentsUpdate = "Comments.Update";
     public const string CommentsDelete = "Comments.Delete";
 
     /// Returns every permission string defined in the system
     public static IReadOnlyList<string> GetAllPermissions() => new[]
     {
         UsersView, UsersManage,
+        OrganizationsView, OrganizationsCreate, OrganizationsUpdate, OrganizationsDelete,
         ProjectsView, ProjectsCreate, ProjectsUpdate, ProjectsDelete,
         TasksView, TasksCreate, TasksUpdate, TasksDelete, TasksAssign, TasksChangeStatus,
         SprintsView, SprintsCreate, SprintsManage,
-        CommentsAdd, CommentsDelete
+        EpicsView, EpicsCreate, EpicsUpdate, EpicsDelete,
+        CommentsView, CommentsAdd, CommentsUpdate, CommentsDelete
     };
 
     /// Returns the permissions granted to a given role.
@@ -50,19 +66,23 @@ public static class AppPermissions
         AppRoles.OrgAdmin => new[]
         {
             UsersView, UsersManage,
+            OrganizationsView, OrganizationsCreate, OrganizationsUpdate, OrganizationsDelete,
             ProjectsView, ProjectsCreate, ProjectsUpdate, ProjectsDelete,
             TasksView, TasksCreate, TasksUpdate, TasksDelete, TasksAssign, TasksChangeStatus,
             SprintsView, SprintsCreate, SprintsManage,
-            CommentsAdd, CommentsDelete
+            EpicsView, EpicsCreate, EpicsUpdate, EpicsDelete,
+            CommentsView, CommentsAdd, CommentsUpdate, CommentsDelete
         },
 
         AppRoles.ProjectManager => new[]
         {
             UsersView,
+            OrganizationsView,
             ProjectsView, ProjectsCreate, ProjectsUpdate,
             TasksView, TasksCreate, TasksUpdate, TasksDelete, TasksAssign, TasksChangeStatus,
             SprintsView, SprintsCreate, SprintsManage,
-            CommentsAdd, CommentsDelete
+            EpicsView, EpicsCreate, EpicsUpdate, EpicsDelete,
+            CommentsView, CommentsAdd, CommentsUpdate, CommentsDelete
         },
 
         AppRoles.Developer => new[]
@@ -70,7 +90,8 @@ public static class AppPermissions
             ProjectsView,
             TasksView, TasksCreate, TasksUpdate, TasksChangeStatus,
             SprintsView,
-            CommentsAdd
+            EpicsView,
+            CommentsView, CommentsAdd, CommentsUpdate
         },
 
         AppRoles.QA => new[]
@@ -78,14 +99,18 @@ public static class AppPermissions
             ProjectsView,
             TasksView, TasksChangeStatus,
             SprintsView,
-            CommentsAdd
+            EpicsView,
+            CommentsView, CommentsAdd
         },
 
         AppRoles.Viewer => new[]
         {
+            OrganizationsView,
             ProjectsView,
             TasksView,
-            SprintsView
+            SprintsView,
+            EpicsView,
+            CommentsView
         },
 
         _ => Array.Empty<string>()

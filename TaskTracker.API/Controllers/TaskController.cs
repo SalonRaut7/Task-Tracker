@@ -35,9 +35,9 @@ namespace TaskTracker.API.Controllers
 
         // GET: api/tasks/{id}
         [HttpGet("{id}")]
-        public async Task<ActionResult<TaskDto>> GetById([FromRoute] int id, CancellationToken cancellationToken)
+        public async Task<ActionResult<TaskDto>> GetById([FromRoute] int id, [FromQuery] Guid projectId, CancellationToken cancellationToken)
         {
-            var task = await _mediator.Send(new GetTaskByIdQuery { Id = id }, cancellationToken);
+            var task = await _mediator.Send(new GetTaskByIdQuery { Id = id, ProjectId = projectId }, cancellationToken);
             if (task is null) return NotFound();
             return Ok(task);
         }
@@ -53,15 +53,16 @@ namespace TaskTracker.API.Controllers
             var task = await _mediator.Send(command, cancellationToken);
 
             // Return 201 with location
-            return CreatedAtAction(nameof(GetById), new { id = task.Id }, task);
+            return CreatedAtAction(nameof(GetById), new { id = task.Id, projectId = task.ProjectId }, task);
         }
 
         // PUT: api/tasks/{id}
         [HttpPut("{id}")]
-        public async Task<ActionResult<TaskDto>> Update([FromRoute] int id, [FromBody] UpdateTaskDto dto, CancellationToken cancellationToken)
+        public async Task<ActionResult<TaskDto>> Update([FromRoute] int id, [FromQuery] Guid projectId, [FromBody] UpdateTaskDto dto, CancellationToken cancellationToken)
         {
             var command = _mapper.Map<UpdateTaskCommand>(dto);
             command.Id = id;
+            command.ProjectId = projectId;
 
             var updatedTask = await _mediator.Send(command, cancellationToken);
 
@@ -71,9 +72,9 @@ namespace TaskTracker.API.Controllers
 
         // DELETE: api/tasks/{id}
         [HttpDelete("{id}")]
-        public async Task<ActionResult> Delete([FromRoute] int id, CancellationToken cancellationToken)
+        public async Task<ActionResult> Delete([FromRoute] int id, [FromQuery] Guid projectId, CancellationToken cancellationToken)
         {
-            var result = await _mediator.Send(new DeleteTaskCommand { Id = id }, cancellationToken);
+            var result = await _mediator.Send(new DeleteTaskCommand { Id = id, ProjectId = projectId }, cancellationToken);
             if (!result) return NotFound();
             return NoContent();
         }

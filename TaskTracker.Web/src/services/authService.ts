@@ -82,3 +82,11 @@ export async function logout(refreshToken: string): Promise<SimpleMessageRespons
     requiresAuth: true,
   });
 }
+
+export async function refreshToken(refreshToken: string): Promise<AuthResponse> {
+  return apiRequest<AuthResponse>("/api/Auth/refresh-token", {
+    method: "POST",
+    body: { refreshToken },
+    requiresAuth: false,
+  });
+}
