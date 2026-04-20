@@ -2,7 +2,9 @@ using AutoMapper;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
+using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
 
@@ -12,16 +14,67 @@ public class GetAllTasksQueryHandler : IRequestHandler<GetAllTasksQuery, PagedRe
 {
     private readonly ITaskRepository _taskRepository;
     private readonly IMapper _mapper;
+    private readonly ICurrentUserService _currentUser;
+    private readonly IUserResourceAccessService _resourceAccessService;
 
-    public GetAllTasksQueryHandler(ITaskRepository taskRepository, IMapper mapper)
+    public GetAllTasksQueryHandler(
+        ITaskRepository taskRepository,
+        IMapper mapper,
+        ICurrentUserService currentUser,
+        IUserResourceAccessService resourceAccessService)
     {
         _taskRepository = taskRepository;
         _mapper = mapper;
+        _currentUser = currentUser;
+        _resourceAccessService = resourceAccessService;
     }
 
     public async Task<PagedResultDto<TaskDto>> Handle(GetAllTasksQuery request, CancellationToken cancellationToken)
     {
-        var filteredQuery = ApplyRequestFilters(_taskRepository.Query(), request);
+        var query = _taskRepository.Query();
+
+        if (!IsSuperAdmin())
+        {
+            if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
+            {
+                throw new UnauthorizedAccessException("Authentication is required.");
+            }
+
+            var userId = _currentUser.UserId!;
+
+            if (request.ProjectId.HasValue)
+            {
+                var canAccessProject = await _resourceAccessService.CanAccessProjectAsync(
+                    userId,
+                    request.ProjectId.Value,
+                    cancellationToken);
+
+                if (!canAccessProject)
+                {
+                    throw new ForbiddenAccessException($"No access to {ResourceType.Project} resource '{request.ProjectId.Value}'.");
+                }
+            }
+            else
+            {
+                var organizationIds = await _resourceAccessService.GetUserOrganizationIdsAsync(userId, cancellationToken);
+                var projectIds = await _resourceAccessService.GetUserProjectIdsAsync(userId, cancellationToken);
+
+                if (organizationIds.Count == 0 || projectIds.Count == 0)
+                {
+                    return new PagedResultDto<TaskDto>
+                    {
+                        Data = [],
+                        TotalCount = 0
+                    };
+                }
+
+                query = query.Where(task =>
+                    projectIds.Contains(task.ProjectId)
+                    && organizationIds.Contains(task.Project.OrganizationId));
+            }
+        }
+
+        var filteredQuery = ApplyRequestFilters(query, request);
         var orderedQuery = ApplyDefaultOrdering(filteredQuery);
 
         var skip = request.Skip.GetValueOrDefault();
@@ -71,6 +124,11 @@ public class GetAllTasksQueryHandler : IRequestHandler<GetAllTasksQuery, PagedRe
         };
     }
 
+    private bool IsSuperAdmin()
+    {
+        return _currentUser.Roles.Contains(AppRoles.SuperAdmin, StringComparer.OrdinalIgnoreCase);
+    }
+
     private static IQueryable<TaskItem> ApplyRequestFilters(IQueryable<TaskItem> query, GetAllTasksQuery request)
     {
         foreach (var filter in BuildFilters(request))
@@ -83,6 +141,36 @@ public class GetAllTasksQueryHandler : IRequestHandler<GetAllTasksQuery, PagedRe
 
     private static IEnumerable<Expression<Func<TaskItem, bool>>> BuildFilters(GetAllTasksQuery request)
     {
+        if (request.ProjectId.HasValue)
+        {
+            var projectId = request.ProjectId.Value;
+            yield return task => task.ProjectId == projectId;
+        }
+
+        if (request.EpicId.HasValue)
+        {
+            var epicId = request.EpicId.Value;
+            yield return task => task.EpicId == epicId;
+        }
+
+        if (request.SprintId.HasValue)
+        {
+            var sprintId = request.SprintId.Value;
+            yield return task => task.SprintId == sprintId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.AssigneeId))
+        {
+            var assigneeId = request.AssigneeId.Trim();
+            yield return task => task.AssigneeId == assigneeId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ReporterId))
+        {
+            var reporterId = request.ReporterId.Trim();
+            yield return task => task.ReporterId == reporterId;
+        }
+
         if (!string.IsNullOrWhiteSpace(request.TitleContains))
         {
             var likePattern = BuildContainsPattern(request.TitleContains);
@@ -100,11 +188,6 @@ public class GetAllTasksQueryHandler : IRequestHandler<GetAllTasksQuery, PagedRe
             var priority = request.Priority.Value;
             yield return task => task.Priority == priority;
         }
-
-        // Future filters can be added here with the same pattern:
-        // yield return task => task.StartDate >= request.StartDate;
-        // yield return task => task.EndDate <= request.EndDate;
-        // yield return task => task.AssignedUserId == request.AssignedUserId;
     }
 
     private static IOrderedQueryable<TaskItem> ApplyDefaultOrdering(IQueryable<TaskItem> query)

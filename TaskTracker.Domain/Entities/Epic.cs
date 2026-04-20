@@ -14,4 +14,5 @@ public class Epic
 
     // Navigation
     public Project Project { get; set; } = null!;
+    public ICollection<TaskItem> Tasks { get; set; } = new List<TaskItem>();
 }

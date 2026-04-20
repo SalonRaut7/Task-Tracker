@@ -16,6 +16,11 @@ export enum TaskPriority {
 
 export interface TaskDto {
   id: number;
+  projectId: string;
+  epicId?: string | null;
+  sprintId?: string | null;
+  assigneeId?: string | null;
+  reporterId: string;
   title?: string;
   description?: string;
   status: Status;
@@ -27,6 +32,10 @@ export interface TaskDto {
 }
 
 export interface CreateTaskDto {
+  projectId: string;
+  epicId?: string | null;
+  sprintId?: string | null;
+  assigneeId?: string | null;
   title?: string;
   description?: string;
   status?: Status;
@@ -37,6 +46,9 @@ export interface CreateTaskDto {
 }
 
 export interface UpdateTaskDto {
+  epicId?: string | null;
+  sprintId?: string | null;
+  assigneeId?: string | null;
   title?: string;
   description?: string;
   status?: Status;

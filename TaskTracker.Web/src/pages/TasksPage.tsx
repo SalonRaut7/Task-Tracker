@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "devextreme-react/button";
 import DataGrid, { Column, Paging } from "devextreme-react/data-grid";
 import DateBox from "devextreme-react/date-box";
@@ -6,9 +6,14 @@ import Popup from "devextreme-react/popup";
 import SelectBox from "devextreme-react/select-box";
 import TextArea from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
+import { useNavigate } from "react-router-dom";
+import { Modal } from "../components/Modal";
 import { useApp } from "../context/AppContext";
 import { ApiError } from "../services/apiClient";
+import { getEpics } from "../services/epicService";
+import { getSprints } from "../services/sprintService";
 import { AppPermissions } from "../security/permissions";
+import type { BackendEpic, BackendSprint } from "../types/app";
 import {
   Status,
   TaskPriority,
@@ -21,10 +26,10 @@ import {
   priorityOptions,
   statusLabel,
   statusOptions,
-  taskKey,
 } from "../utils/taskPresentation";
 
 type ViewMode = "list" | "kanban";
+type TaskPopupMode = "view" | "edit" | null;
 
 interface TaskFilters {
   status: Status | "all";
@@ -32,6 +37,10 @@ interface TaskFilters {
 }
 
 interface TaskForm {
+  projectId: string;
+  epicId: string;
+  sprintId: string;
+  assigneeId: string;
   title: string;
   description: string;
   status: Status;
@@ -58,10 +67,25 @@ function toDateOnly(value: unknown): string {
     return "";
   }
 
-  return date.toISOString().split("T")[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function validateTaskForm(form: TaskForm): string | null {
+  if (!form.projectId.trim()) {
+    return "Project is required.";
+  }
+
+  if (!form.epicId.trim()) {
+    return "Epic is required.";
+  }
+
+  if (!form.sprintId.trim()) {
+    return "Sprint is required.";
+  }
+
   if (!form.title.trim()) {
     return "Title is required.";
   }
@@ -72,6 +96,18 @@ function validateTaskForm(form: TaskForm): string | null {
 
   if (form.description.trim().length > 500) {
     return "Description must be 500 characters or less.";
+  }
+
+  if (form.assigneeId && !form.assigneeId.trim()) {
+    return "Assignee id cannot be whitespace.";
+  }
+
+  if (!form.startDate) {
+    return "Start date is required.";
+  }
+
+  if (!form.endDate) {
+    return "End date is required.";
   }
 
   if (form.startDate && form.endDate) {
@@ -88,6 +124,10 @@ function validateTaskForm(form: TaskForm): string | null {
 
 function toCreateDto(form: TaskForm): CreateTaskDto {
   return {
+    projectId: form.projectId,
+    epicId: form.epicId.trim(),
+    sprintId: form.sprintId.trim(),
+    assigneeId: form.assigneeId.trim() || null,
     title: form.title.trim(),
     description: form.description.trim() || undefined,
     status: form.status,
@@ -99,6 +139,9 @@ function toCreateDto(form: TaskForm): CreateTaskDto {
 
 function toUpdateDto(form: TaskForm): UpdateTaskDto {
   return {
+    epicId: form.epicId.trim(),
+    sprintId: form.sprintId.trim(),
+    assigneeId: form.assigneeId.trim() || null,
     title: form.title.trim(),
     description: form.description.trim() || undefined,
     status: form.status,
@@ -110,6 +153,10 @@ function toUpdateDto(form: TaskForm): UpdateTaskDto {
 
 function toTaskForm(task: TaskDto): TaskForm {
   return {
+    projectId: task.projectId,
+    epicId: task.epicId ?? "",
+    sprintId: task.sprintId ?? "",
+    assigneeId: task.assigneeId ?? "",
     title: task.title ?? "",
     description: task.description ?? "",
     status: task.status,
@@ -120,15 +167,18 @@ function toTaskForm(task: TaskDto): TaskForm {
 }
 
 export function TasksPage() {
-  const { tasks, loadingData, addTask, updateTask, deleteTask, hasPermission } = useApp();
+  const navigate = useNavigate();
+  const { tasks, projects, loadingData, addTask, updateTask, deleteTask, hasPermission } = useApp();
 
   const canCreate = hasPermission(AppPermissions.TasksCreate);
   const canUpdate = hasPermission(AppPermissions.TasksUpdate);
   const canDelete = hasPermission(AppPermissions.TasksDelete);
+  const canAssign = hasPermission(AppPermissions.TasksAssign);
 
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [query, setQuery] = useState("");
   const [selectedTask, setSelectedTask] = useState<TaskDto | null>(null);
+  const [taskPopupMode, setTaskPopupMode] = useState<TaskPopupMode>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [requestLoading, setRequestLoading] = useState(false);
@@ -138,6 +188,10 @@ export function TasksPage() {
   });
 
   const [createForm, setCreateForm] = useState<TaskForm>({
+    projectId: "",
+    epicId: "",
+    sprintId: "",
+    assigneeId: "",
     title: "",
     description: "",
     status: Status.NotStarted,
@@ -147,6 +201,195 @@ export function TasksPage() {
   });
 
   const [editForm, setEditForm] = useState<TaskForm | null>(null);
+  const [createEpics, setCreateEpics] = useState<BackendEpic[]>([]);
+  const [createSprints, setCreateSprints] = useState<BackendSprint[]>([]);
+  const [editEpics, setEditEpics] = useState<BackendEpic[]>([]);
+  const [editSprints, setEditSprints] = useState<BackendSprint[]>([]);
+  const projectLinksCacheRef = useRef<
+    Record<string, { epics: BackendEpic[]; sprints: BackendSprint[] }>
+  >({});
+  const projectLinksInflightRef = useRef<
+    Record<string, Promise<{ epics: BackendEpic[]; sprints: BackendSprint[] }>>
+  >({});
+  const suppressNextRowClickRef = useRef(false);
+  const [viewport, setViewport] = useState(() => ({
+    width: typeof window !== "undefined" ? window.innerWidth : 1366,
+    height: typeof window !== "undefined" ? window.innerHeight : 768,
+  }));
+
+  useEffect(() => {
+    const handleResize = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const createPopupWidth =
+    viewport.width <= 820 ? Math.max(320, viewport.width - 24) : viewport.width <= 1440 ? 560 : 640;
+
+  const detailsPopupWidth =
+    viewport.width <= 820 ? Math.max(340, viewport.width - 20) : viewport.width <= 1440 ? 680 : 760;
+
+  const createLinksMissing =
+    Boolean(createForm.projectId) && (createEpics.length === 0 || createSprints.length === 0);
+
+  const editLinksMissing =
+    Boolean(editForm?.projectId) && (editEpics.length === 0 || editSprints.length === 0);
+
+  const editEpicNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    editEpics.forEach((epic) => {
+      map.set(epic.id, epic.title);
+    });
+    return map;
+  }, [editEpics]);
+
+  const editSprintNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    editSprints.forEach((sprint) => {
+      map.set(sprint.id, sprint.name);
+    });
+    return map;
+  }, [editSprints]);
+
+  const editEpicsForSelect = useMemo(() => {
+    const currentEpicId = editForm?.epicId?.trim();
+    if (!currentEpicId) {
+      return editEpics;
+    }
+
+    if (editEpics.some((epic) => epic.id === currentEpicId)) {
+      return editEpics;
+    }
+
+    return [
+      {
+        id: currentEpicId,
+        projectId: editForm?.projectId ?? "",
+        title: currentEpicId,
+        status: 0,
+      },
+      ...editEpics,
+    ];
+  }, [editEpics, editForm?.epicId, editForm?.projectId]);
+
+  const editSprintsForSelect = useMemo(() => {
+    const currentSprintId = editForm?.sprintId?.trim();
+    if (!currentSprintId) {
+      return editSprints;
+    }
+
+    if (editSprints.some((sprint) => sprint.id === currentSprintId)) {
+      return editSprints;
+    }
+
+    return [
+      {
+        id: currentSprintId,
+        projectId: editForm?.projectId ?? "",
+        name: currentSprintId,
+        goal: undefined,
+        startDate: "",
+        endDate: "",
+        status: 0,
+      },
+      ...editSprints,
+    ];
+  }, [editSprints, editForm?.sprintId, editForm?.projectId]);
+
+  const selectBoxDropDownOptions = useMemo(
+    () => ({
+      wrapperAttr: { class: "modal-selectbox-overlay" },
+    }),
+    []
+  );
+
+  const loadProjectLinks = async (
+    projectId: string,
+    onEpics: (value: BackendEpic[]) => void,
+    onSprints: (value: BackendSprint[]) => void
+  ) => {
+    if (!projectId) {
+      onEpics([]);
+      onSprints([]);
+      return;
+    }
+
+    const cachedLinks = projectLinksCacheRef.current[projectId];
+    if (cachedLinks) {
+      onEpics(cachedLinks.epics);
+      onSprints(cachedLinks.sprints);
+      return;
+    }
+
+    let inflightRequest = projectLinksInflightRef.current[projectId];
+    if (!inflightRequest) {
+      inflightRequest = Promise.all([getEpics(projectId), getSprints(projectId)]).then(
+        ([epicsResult, sprintsResult]) => ({
+          epics: epicsResult,
+          sprints: sprintsResult,
+        })
+      );
+      projectLinksInflightRef.current[projectId] = inflightRequest;
+    }
+
+    try {
+      const links = await inflightRequest;
+      projectLinksCacheRef.current[projectId] = links;
+      onEpics(links.epics);
+      onSprints(links.sprints);
+    } catch {
+      onEpics([]);
+      onSprints([]);
+    } finally {
+      delete projectLinksInflightRef.current[projectId];
+    }
+  };
+
+  useEffect(() => {
+    if (projects.length === 0) {
+      return;
+    }
+
+    setCreateForm((prev) => {
+      if (prev.projectId) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        projectId: projects[0].id,
+      };
+    });
+  }, [projects]);
+
+  useEffect(() => {
+    if (!showCreate || !createForm.projectId) {
+      return;
+    }
+
+    void loadProjectLinks(createForm.projectId, setCreateEpics, setCreateSprints);
+  }, [showCreate, createForm.projectId]);
+
+  useEffect(() => {
+    if (taskPopupMode !== "edit" || !editForm?.projectId) {
+      setEditEpics([]);
+      setEditSprints([]);
+      return;
+    }
+
+    void loadProjectLinks(editForm.projectId, setEditEpics, setEditSprints);
+  }, [taskPopupMode, editForm?.projectId]);
+
+  useEffect(() => {
+    if (!selectedTask?.projectId || !editForm?.projectId) {
+      return;
+    }
+
+    void loadProjectLinks(editForm.projectId, setEditEpics, setEditSprints);
+  }, [selectedTask?.id, selectedTask?.projectId, editForm?.projectId]);
 
   const filteredTasks = useMemo(() => {
     return tasks
@@ -155,7 +398,7 @@ export function TasksPage() {
         const matchesText =
           !term ||
           (task.title ?? "").toLowerCase().includes(term) ||
-          taskKey(task).toLowerCase().includes(term);
+          String(task.id).toLowerCase().includes(term);
         const matchesStatus =
           filters.status === "all" || task.status === filters.status;
         const matchesPriority =
@@ -168,6 +411,14 @@ export function TasksPage() {
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       );
   }, [tasks, query, filters]);
+
+  const projectNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    projects.forEach((project) => {
+      map.set(project.id, project.name);
+    });
+    return map;
+  }, [projects]);
 
   const setApiError = (error: unknown, fallback: string) => {
     if (error instanceof ApiError) {
@@ -202,6 +453,10 @@ export function TasksPage() {
     try {
       await addTask(toCreateDto(createForm));
       setCreateForm({
+        projectId: createForm.projectId,
+        epicId: "",
+        sprintId: "",
+        assigneeId: "",
         title: "",
         description: "",
         status: Status.NotStarted,
@@ -217,9 +472,17 @@ export function TasksPage() {
     }
   };
 
-  const openTaskDetails = (task: TaskDto) => {
+  const openTaskDetails = (task: TaskDto, mode: TaskPopupMode) => {
     setSelectedTask(task);
+    setTaskPopupMode(mode);
     setEditForm(toTaskForm(task));
+    setRequestError("");
+  };
+
+  const closeTaskDetails = () => {
+    setSelectedTask(null);
+    setTaskPopupMode(null);
+    setEditForm(null);
     setRequestError("");
   };
 
@@ -243,9 +506,8 @@ export function TasksPage() {
 
     setRequestLoading(true);
     try {
-      const updated = await updateTask(selectedTask.id, toUpdateDto(editForm));
-      setSelectedTask(updated);
-      setEditForm(toTaskForm(updated));
+      await updateTask(selectedTask.id, selectedTask.projectId, toUpdateDto(editForm));
+      closeTaskDetails();
     } catch (error) {
       setApiError(error, "Failed to update task.");
     } finally {
@@ -253,13 +515,14 @@ export function TasksPage() {
     }
   };
 
-  const handleDeleteTask = async () => {
-    if (!selectedTask) {
+  const handleDeleteFromGrid = async (task: TaskDto) => {
+    if (!canDelete) {
+      setRequestError("You do not have permission to delete tasks.");
       return;
     }
 
-    if (!canDelete) {
-      setRequestError("You do not have permission to delete tasks.");
+    const confirmed = window.confirm(`Delete task \"${task.title || `#${task.id}`}\"?`);
+    if (!confirmed) {
       return;
     }
 
@@ -267,9 +530,11 @@ export function TasksPage() {
     setRequestError("");
 
     try {
-      await deleteTask(selectedTask.id);
-      setSelectedTask(null);
-      setEditForm(null);
+      await deleteTask(task.id, task.projectId);
+      if (selectedTask?.id === task.id) {
+        setSelectedTask(null);
+        setEditForm(null);
+      }
     } catch (error) {
       setApiError(error, "Failed to delete task.");
     } finally {
@@ -277,19 +542,33 @@ export function TasksPage() {
     }
   };
 
+  const goToTaskDetails = (task: TaskDto) => {
+    const query = new URLSearchParams();
+
+    if (task.projectId) {
+      query.set("projectId", task.projectId);
+    }
+
+    const querySuffix = query.toString() ? `?${query.toString()}` : "";
+    navigate(`/tasks/details/${task.id}${querySuffix}`);
+  };
+
   return (
     <div className="page-stack">
       <section className="page-title-row">
         <div>
           <h1>Tasks</h1>
-          <p className="page-subtitle">Manage and track all tasks from the backend</p>
+          <p className="page-subtitle">Manage and track all tasks</p>
         </div>
         <Button
           text="New Task"
           icon="plus"
           type="default"
           disabled={!canCreate}
-          onClick={() => setShowCreate(true)}
+          onClick={() => {
+            setRequestError("");
+            setShowCreate(true);
+          }}
         />
       </section>
 
@@ -300,7 +579,7 @@ export function TasksPage() {
       ) : null}
 
       {loadingData && <div className="page-inline-info">Refreshing tasks...</div>}
-      {requestError && <div className="form-error">{requestError}</div>}
+      {!showCreate && !selectedTask && requestError && <div className="form-error">{requestError}</div>}
 
       <section className="toolbar-row">
         <TextBox
@@ -308,7 +587,7 @@ export function TasksPage() {
           placeholder="Search tasks..."
           value={query}
           onValueChanged={(event) => setQuery(String(event.value ?? ""))}
-          width={280}
+          width="min(100%, 320px)"
           showClearButton
         />
 
@@ -364,12 +643,34 @@ export function TasksPage() {
             showBorders={false}
             rowAlternationEnabled
             hoverStateEnabled
-            onRowClick={(event) => openTaskDetails(event.data as TaskDto)}
+            columnAutoWidth={false}
+            columnHidingEnabled={false}
+            wordWrapEnabled={false}
+            columnMinWidth={120}
+            onRowClick={(event) => {
+              if (suppressNextRowClickRef.current) {
+                suppressNextRowClickRef.current = false;
+                return;
+              }
+
+              if (event.rowType !== "data" || !event.data) {
+                return;
+              }
+
+              const target = event.event?.target as HTMLElement | null;
+              if (target?.closest(".inline-actions")) {
+                return;
+              }
+
+              goToTaskDetails(event.data as TaskDto);
+            }}
           >
             <Column
-              caption="Key"
-              width={110}
-              cellRender={({ data }: { data: TaskDto }) => taskKey(data)}
+              caption="Project"
+              width={180}
+              cellRender={({ data }: { data: TaskDto }) =>
+                projectNameById.get(data.projectId) ?? data.projectId
+              }
             />
             <Column
               dataField="title"
@@ -400,6 +701,63 @@ export function TasksPage() {
                 data.endDate ? new Date(`${data.endDate}T00:00:00`).toLocaleDateString() : "-"
               }
             />
+            <Column
+              caption="Actions"
+              width={250}
+              allowSorting={false}
+              allowFiltering={false}
+              cellRender={({ data }: { data: TaskDto }) => (
+                <div
+                  className="inline-actions"
+                  onClick={(event) => {
+                    suppressNextRowClickRef.current = true;
+                    event.stopPropagation();
+                  }}
+                  onMouseDown={(event) => {
+                    suppressNextRowClickRef.current = true;
+                    event.stopPropagation();
+                  }}
+                  onPointerDown={(event) => {
+                    suppressNextRowClickRef.current = true;
+                    event.stopPropagation();
+                  }}
+                >
+                  <Button
+                    text="View"
+                    stylingMode="text"
+                    onClick={(event) => {
+                      suppressNextRowClickRef.current = true;
+                      event?.event?.preventDefault?.();
+                      event?.event?.stopPropagation?.();
+                      goToTaskDetails(data);
+                    }}
+                  />
+                  <Button
+                    text="Edit"
+                    stylingMode="text"
+                    disabled={!canUpdate}
+                    onClick={(event) => {
+                      suppressNextRowClickRef.current = true;
+                      event?.event?.preventDefault?.();
+                      event?.event?.stopPropagation?.();
+                      openTaskDetails(data, "edit");
+                    }}
+                  />
+                  <Button
+                    text="Delete"
+                    type="danger"
+                    stylingMode="text"
+                    disabled={!canDelete || requestLoading}
+                    onClick={(event) => {
+                      suppressNextRowClickRef.current = true;
+                      event?.event?.preventDefault?.();
+                      event?.event?.stopPropagation?.();
+                      void handleDeleteFromGrid(data);
+                    }}
+                  />
+                </div>
+              )}
+            />
             <Paging enabled pageSize={10} />
           </DataGrid>
         </section>
@@ -418,9 +776,8 @@ export function TasksPage() {
                       type="button"
                       key={task.id}
                       className="kanban-card"
-                      onClick={() => openTaskDetails(task)}
+                      onClick={() => goToTaskDetails(task)}
                     >
-                      <small>{taskKey(task)}</small>
                       <strong>{task.title || "Untitled task"}</strong>
                       <span>{priorityLabel(task.priority)}</span>
                     </button>
@@ -431,25 +788,42 @@ export function TasksPage() {
         </section>
       )}
 
-      <Popup
+      <Modal
         visible={selectedTask !== null}
-        onHiding={() => {
-          setSelectedTask(null);
-          setEditForm(null);
-          setRequestError("");
-        }}
-        title={selectedTask ? `${taskKey(selectedTask)} - ${selectedTask.title ?? "Untitled"}` : "Task details"}
-        width={760}
-        height="auto"
-        showCloseButton
+        onClose={closeTaskDetails}
+        title={
+          selectedTask
+            ? taskPopupMode === "edit"
+              ? `Edit Task: ${selectedTask.title ?? "Untitled"}`
+              : `Task: ${selectedTask.title ?? "Untitled"}`
+            : "Task details"
+        }
+        width={detailsPopupWidth}
       >
         {selectedTask && editForm && (
           <div className="task-popup-grid">
             <div className="task-popup-main">
+              {requestError && <div className="form-error">{requestError}</div>}
+
+              <label>
+                Assignee Id
+                <TextBox
+                  value={editForm.assigneeId}
+                  placeholder="Optional user id"
+                  readOnly={taskPopupMode === "view" || !canAssign}
+                  onValueChanged={(event) =>
+                    setEditForm((prev) =>
+                      prev ? { ...prev, assigneeId: String(event.value ?? "") } : prev
+                    )
+                  }
+                />
+              </label>
+
               <label>
                 Title
                 <TextBox
                   value={editForm.title}
+                  readOnly={taskPopupMode === "view"}
                   onValueChanged={(event) =>
                     setEditForm((prev) =>
                       prev ? { ...prev, title: String(event.value ?? "") } : prev
@@ -462,6 +836,7 @@ export function TasksPage() {
                 Description
                 <TextArea
                   value={editForm.description}
+                  readOnly={taskPopupMode === "view"}
                   onValueChanged={(event) =>
                     setEditForm((prev) =>
                       prev ? { ...prev, description: String(event.value ?? "") } : prev
@@ -474,12 +849,107 @@ export function TasksPage() {
 
             <div className="task-popup-side">
               <label>
+                Project
+                {taskPopupMode === "edit" ? (
+                  <SelectBox
+                    dataSource={projects}
+                    displayExpr="name"
+                    valueExpr="id"
+                    value={editForm.projectId}
+                    readOnly={false}
+                    dropDownOptions={selectBoxDropDownOptions}
+                    onValueChanged={(event) =>
+                      setEditForm((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              projectId: String(event.value ?? ""),
+                              epicId: "",
+                              sprintId: "",
+                            }
+                          : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox
+                    value={projectNameById.get(editForm.projectId) ?? editForm.projectId}
+                    readOnly
+                  />
+                )}
+              </label>
+
+              <label>
+                Epic
+                {taskPopupMode === "edit" ? (
+                  <SelectBox
+                    dataSource={editEpicsForSelect}
+                    displayExpr="title"
+                    valueExpr="id"
+                    value={editForm.epicId || null}
+                    readOnly={false}
+                    dropDownOptions={selectBoxDropDownOptions}
+                    onValueChanged={(event) =>
+                      setEditForm((prev) =>
+                        prev ? { ...prev, epicId: String(event.value ?? "") } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox
+                    value={
+                      editForm.epicId
+                        ? editEpicNameById.get(editForm.epicId) ?? "-"
+                        : "-"
+                    }
+                    readOnly
+                  />
+                )}
+              </label>
+
+              <label>
+                Sprint
+                {taskPopupMode === "edit" ? (
+                  <SelectBox
+                    dataSource={editSprintsForSelect}
+                    displayExpr="name"
+                    valueExpr="id"
+                    value={editForm.sprintId || null}
+                    readOnly={false}
+                    dropDownOptions={selectBoxDropDownOptions}
+                    onValueChanged={(event) =>
+                      setEditForm((prev) =>
+                        prev ? { ...prev, sprintId: String(event.value ?? "") } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox
+                    value={
+                      editForm.sprintId
+                        ? editSprintNameById.get(editForm.sprintId) ?? "-"
+                        : "-"
+                    }
+                    readOnly
+                  />
+                )}
+              </label>
+
+              {editLinksMissing && (
+                <div className="form-error">
+                  The selected project must have at least one epic and one sprint.
+                </div>
+              )}
+
+              <label>
                 Status
                 <SelectBox
                   dataSource={statusOptions}
                   displayExpr="label"
                   valueExpr="id"
                   value={editForm.status}
+                  readOnly={taskPopupMode === "view"}
+                  dropDownOptions={selectBoxDropDownOptions}
                   onValueChanged={(event) =>
                     setEditForm((prev) =>
                       prev ? { ...prev, status: (event.value as Status) ?? prev.status } : prev
@@ -495,6 +965,8 @@ export function TasksPage() {
                   displayExpr="label"
                   valueExpr="id"
                   value={editForm.priority}
+                  readOnly={taskPopupMode === "view"}
+                  dropDownOptions={selectBoxDropDownOptions}
                   onValueChanged={(event) =>
                     setEditForm((prev) =>
                       prev
@@ -513,6 +985,7 @@ export function TasksPage() {
                 <DateBox
                   type="date"
                   value={editForm.startDate || null}
+                  readOnly={taskPopupMode === "view"}
                   onValueChanged={(event) =>
                     setEditForm((prev) =>
                       prev ? { ...prev, startDate: toDateOnly(event.value) } : prev
@@ -526,6 +999,7 @@ export function TasksPage() {
                 <DateBox
                   type="date"
                   value={editForm.endDate || null}
+                  readOnly={taskPopupMode === "view"}
                   onValueChanged={(event) =>
                     setEditForm((prev) =>
                       prev ? { ...prev, endDate: toDateOnly(event.value) } : prev
@@ -535,24 +1009,29 @@ export function TasksPage() {
               </label>
 
               <div className="popup-actions task-popup-actions">
-                <Button
-                  text={requestLoading ? "Saving..." : "Save"}
-                  type="default"
-                  onClick={handleUpdateTask}
-                  disabled={requestLoading || !canUpdate}
-                />
-                <Button
-                  text={requestLoading ? "Deleting..." : "Delete"}
-                  stylingMode="outlined"
-                  type="danger"
-                  onClick={handleDeleteTask}
-                  disabled={requestLoading || !canDelete}
-                />
+                {taskPopupMode === "edit" ? (
+                  <>
+                    <Button
+                      text="Cancel"
+                      stylingMode="outlined"
+                      onClick={closeTaskDetails}
+                      disabled={requestLoading}
+                    />
+                    <Button
+                      text={requestLoading ? "Saving..." : "Save"}
+                      type="default"
+                      onClick={handleUpdateTask}
+                      disabled={requestLoading || !canUpdate || editLinksMissing}
+                    />
+                  </>
+                ) : (
+                  <Button text="Close" stylingMode="outlined" onClick={closeTaskDetails} />
+                )}
               </div>
             </div>
           </div>
         )}
-      </Popup>
+      </Modal>
 
       <Popup
         visible={showCreate}
@@ -561,11 +1040,93 @@ export function TasksPage() {
           setRequestError("");
         }}
         title="Create New Task"
-        width={640}
+        width={createPopupWidth}
+        maxHeight="92vh"
         height="auto"
+        dragEnabled={false}
+        hideOnOutsideClick={false}
         showCloseButton
       >
         <form className="popup-form" onSubmit={handleCreateTask}>
+          {requestError && <div className="form-error">{requestError}</div>}
+
+          <label>
+            Project
+            <SelectBox
+              dataSource={projects}
+              displayExpr="name"
+              valueExpr="id"
+              value={createForm.projectId || null}
+              dropDownOptions={selectBoxDropDownOptions}
+              onValueChanged={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  projectId: String(event.value ?? ""),
+                  epicId: "",
+                  sprintId: "",
+                }))
+              }
+              placeholder="Select project"
+            />
+          </label>
+
+          <div className="form-grid-two">
+            <label>
+              Epic
+              <SelectBox
+                dataSource={createEpics}
+                displayExpr="title"
+                valueExpr="id"
+                value={createForm.epicId || null}
+                dropDownOptions={selectBoxDropDownOptions}
+                onValueChanged={(event) =>
+                  setCreateForm((prev) => ({
+                    ...prev,
+                    epicId: String(event.value ?? ""),
+                  }))
+                }
+              />
+            </label>
+
+            <label>
+              Sprint
+              <SelectBox
+                dataSource={createSprints}
+                displayExpr="name"
+                valueExpr="id"
+                value={createForm.sprintId || null}
+                dropDownOptions={selectBoxDropDownOptions}
+                onValueChanged={(event) =>
+                  setCreateForm((prev) => ({
+                    ...prev,
+                    sprintId: String(event.value ?? ""),
+                  }))
+                }
+              />
+            </label>
+          </div>
+
+          {createLinksMissing && (
+            <div className="form-error">
+              The selected project must have at least one epic and one sprint.
+            </div>
+          )}
+
+          <label>
+            Assignee Id
+            <TextBox
+              value={createForm.assigneeId}
+              placeholder="Optional user id"
+              disabled={!canAssign}
+              onValueChanged={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  assigneeId: String(event.value ?? ""),
+                }))
+              }
+            />
+          </label>
+
           <label>
             Title
             <TextBox
@@ -595,6 +1156,7 @@ export function TasksPage() {
                 displayExpr="label"
                 valueExpr="id"
                 value={createForm.status}
+                dropDownOptions={selectBoxDropDownOptions}
                 onValueChanged={(event) =>
                   setCreateForm((prev) => ({
                     ...prev,
@@ -611,6 +1173,7 @@ export function TasksPage() {
                 displayExpr="label"
                 valueExpr="id"
                 value={createForm.priority}
+                dropDownOptions={selectBoxDropDownOptions}
                 onValueChanged={(event) =>
                   setCreateForm((prev) => ({
                     ...prev,

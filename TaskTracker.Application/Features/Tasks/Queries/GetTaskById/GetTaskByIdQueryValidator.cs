@@ -8,6 +8,9 @@ namespace TaskTracker.Application.Features.Tasks.Queries.GetTaskById
         {
             RuleFor(x => x.Id)
                 .GreaterThan(0).WithMessage("Id must be greater than 0");
+
+            RuleFor(x => x.ProjectId)
+                .NotEmpty().WithMessage("ProjectId is required");
         }
     }
 }

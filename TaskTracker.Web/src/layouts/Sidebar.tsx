@@ -6,6 +6,12 @@ import { AppPermissions, type AppPermission } from "../security/permissions";
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: "home" },
   {
+    name: "Organizations",
+    href: "/organizations",
+    icon: "group",
+    requiredPermission: AppPermissions.OrganizationsView,
+  },
+  {
     name: "Projects",
     href: "/projects",
     icon: "folder",

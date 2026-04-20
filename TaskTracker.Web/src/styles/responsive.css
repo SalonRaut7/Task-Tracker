@@ -1,0 +1,125 @@
+@media (max-width: 1120px) {
+  .page-container {
+    padding: 1rem;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-grid,
+  .member-grid,
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .kanban-grid-wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-popup-grid,
+  .form-grid-two {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1440px) and (min-width: 1021px) {
+  .popup-form {
+    gap: 0.75rem;
+  }
+
+  .task-popup-grid {
+    gap: 0.75rem;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 1021px) {
+  .task-popup-grid,
+  .form-grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .task-comment-list {
+    max-height: 190px;
+  }
+
+  .popup-form {
+    gap: 0.65rem;
+  }
+
+  .popup-form label {
+    font-size: 0.86rem;
+  }
+
+  .task-popup-actions .dx-button {
+    flex: 1 1 140px;
+  }
+}
+
+@media (max-width: 820px) {
+  .page-container {
+    padding: 0.75rem;
+  }
+
+  .auth-page {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-brand-panel {
+    display: none;
+  }
+
+  .app-sidebar {
+    display: none;
+  }
+
+  .app-shell-content.sidebar-expanded,
+  .app-shell-content.sidebar-collapsed {
+    margin-left: 0;
+  }
+
+  .top-nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    position: static;
+  }
+
+  .top-nav-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .dropdown-panel {
+    width: min(92vw, 320px);
+  }
+
+  .toolbar-row {
+    align-items: stretch;
+  }
+
+  .toolbar-filters {
+    width: 100%;
+  }
+
+  .toolbar-filters .dx-widget {
+    flex: 1 1 180px;
+    min-width: 0;
+  }
+
+  .popup-actions .dx-button {
+    flex: 1 1 150px;
+  }
+
+  .kanban-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kanban-grid-wide {
+    grid-template-columns: 1fr;
+  }
+
+  .task-comment-list {
+    max-height: 220px;
+  }
+}

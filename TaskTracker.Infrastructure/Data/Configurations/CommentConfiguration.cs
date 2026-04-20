@@ -16,7 +16,7 @@ public class CommentConfiguration : IEntityTypeConfiguration<Comment>
          builder.HasIndex(c => c.TaskId);
 
          builder.HasOne(c => c.Task)
-             .WithMany()
+             .WithMany(t => t.Comments)
              .HasForeignKey(c => c.TaskId)
              .OnDelete(DeleteBehavior.Cascade);
 

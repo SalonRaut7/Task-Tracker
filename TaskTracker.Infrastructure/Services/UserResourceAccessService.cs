@@ -13,13 +13,31 @@ public class UserResourceAccessService : IUserResourceAccessService
         _dbContext = dbContext;
     }
 
+    public async Task<IReadOnlyList<Guid>> GetUserOrganizationIdsAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        return await QueryUserOrganizationIds(userId)
+            .Select(membership => membership.OrganizationId)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetUserProjectIdsAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        return await QueryUserProjectIds(userId)
+            .Select(membership => membership.ProjectId)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<bool> CanAccessOrganizationAsync(
         string userId,
         Guid organizationId,
         CancellationToken cancellationToken = default)
     {
-        return await UserOrganizationIds(userId)
-            .AnyAsync(id => id == organizationId, cancellationToken);
+        return await QueryUserOrganizationIds(userId)
+            .AnyAsync(membership => membership.OrganizationId == organizationId, cancellationToken);
     }
 
     public async Task<bool> CanAccessProjectAsync(
@@ -27,12 +45,33 @@ public class UserResourceAccessService : IUserResourceAccessService
         Guid projectId,
         CancellationToken cancellationToken = default)
     {
-        var userOrganizationIds = UserOrganizationIds(userId);
+        var userProjectIds = QueryUserProjectIds(userId).Select(membership => membership.ProjectId);
+        var userOrganizationIds = QueryUserOrganizationIds(userId).Select(membership => membership.OrganizationId);
 
         return await _dbContext.Projects
             .AsNoTracking()
             .Where(project => project.Id == projectId)
-            .AnyAsync(project => userOrganizationIds.Contains(project.OrganizationId), cancellationToken);
+            .AnyAsync(
+                project => userProjectIds.Contains(project.Id)
+                    && userOrganizationIds.Contains(project.OrganizationId),
+                cancellationToken);
+    }
+
+    public async Task<bool> CanAccessTaskAsync(
+        string userId,
+        int taskId,
+        CancellationToken cancellationToken = default)
+    {
+        var userProjectIds = QueryUserProjectIds(userId).Select(membership => membership.ProjectId);
+        var userOrganizationIds = QueryUserOrganizationIds(userId).Select(membership => membership.OrganizationId);
+
+        return await _dbContext.Tasks
+            .AsNoTracking()
+            .Where(task => task.Id == taskId)
+            .AnyAsync(
+                task => userProjectIds.Contains(task.ProjectId)
+                    && userOrganizationIds.Contains(task.Project.OrganizationId),
+                cancellationToken);
     }
 
     public async Task<bool> CanAccessCommentAsync(
@@ -40,19 +79,15 @@ public class UserResourceAccessService : IUserResourceAccessService
         Guid commentId,
         CancellationToken cancellationToken = default)
     {
-        var userOrganizationIds = UserOrganizationIds(userId);
+        var userProjectIds = QueryUserProjectIds(userId).Select(membership => membership.ProjectId);
+        var userOrganizationIds = QueryUserOrganizationIds(userId).Select(membership => membership.OrganizationId);
 
         return await _dbContext.Comments
             .AsNoTracking()
             .Where(comment => comment.Id == commentId)
-            .Join(
-                _dbContext.Users.AsNoTracking(),
-                comment => comment.AuthorId,
-                author => author.Id,
-                (comment, author) => new { comment.AuthorId, author.OrganizationId })
             .AnyAsync(
-                row => row.AuthorId == userId
-                    || (row.OrganizationId.HasValue && userOrganizationIds.Contains(row.OrganizationId.Value)),
+                comment => userProjectIds.Contains(comment.Task.ProjectId)
+                    && userOrganizationIds.Contains(comment.Task.Project.OrganizationId),
                 cancellationToken);
     }
 
@@ -61,13 +96,16 @@ public class UserResourceAccessService : IUserResourceAccessService
         Guid epicId,
         CancellationToken cancellationToken = default)
     {
-        var userOrganizationIds = UserOrganizationIds(userId);
+        var userProjectIds = QueryUserProjectIds(userId).Select(membership => membership.ProjectId);
+        var userOrganizationIds = QueryUserOrganizationIds(userId).Select(membership => membership.OrganizationId);
 
         return await _dbContext.Epics
             .AsNoTracking()
             .Where(epic => epic.Id == epicId)
-            .Select(epic => epic.Project.OrganizationId)
-            .AnyAsync(orgId => userOrganizationIds.Contains(orgId), cancellationToken);
+            .AnyAsync(
+                epic => userProjectIds.Contains(epic.ProjectId)
+                    && userOrganizationIds.Contains(epic.Project.OrganizationId),
+                cancellationToken);
     }
 
     public async Task<bool> CanAccessSprintAsync(
@@ -75,20 +113,29 @@ public class UserResourceAccessService : IUserResourceAccessService
         Guid sprintId,
         CancellationToken cancellationToken = default)
     {
-        var userOrganizationIds = UserOrganizationIds(userId);
+        var userProjectIds = QueryUserProjectIds(userId).Select(membership => membership.ProjectId);
+        var userOrganizationIds = QueryUserOrganizationIds(userId).Select(membership => membership.OrganizationId);
 
         return await _dbContext.Sprints
             .AsNoTracking()
             .Where(sprint => sprint.Id == sprintId)
-            .Select(sprint => sprint.Project.OrganizationId)
-            .AnyAsync(orgId => userOrganizationIds.Contains(orgId), cancellationToken);
+            .AnyAsync(
+                sprint => userProjectIds.Contains(sprint.ProjectId)
+                    && userOrganizationIds.Contains(sprint.Project.OrganizationId),
+                cancellationToken);
     }
 
-    private IQueryable<Guid> UserOrganizationIds(string userId)
+    private IQueryable<Domain.Entities.UserOrganization> QueryUserOrganizationIds(string userId)
     {
-        return _dbContext.Users
+        return _dbContext.UserOrganizations
             .AsNoTracking()
-            .Where(user => user.Id == userId && user.OrganizationId.HasValue)
-            .Select(user => user.OrganizationId!.Value);
+            .Where(membership => membership.UserId == userId);
+    }
+
+    private IQueryable<Domain.Entities.UserProject> QueryUserProjectIds(string userId)
+    {
+        return _dbContext.UserProjects
+            .AsNoTracking()
+            .Where(membership => membership.UserId == userId);
     }
 }

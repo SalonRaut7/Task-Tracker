@@ -1,6 +1,19 @@
 import { ApiError, apiRequest } from "./apiClient";
 import type { BackendProject } from "../types/app";
 
+export interface CreateProjectPayload {
+  organizationId: string;
+  name: string;
+  key: string;
+  description?: string;
+}
+
+export interface UpdateProjectPayload {
+  name: string;
+  key: string;
+  description?: string;
+}
+
 interface ProjectListResult {
   items: BackendProject[];
   available: boolean;
@@ -71,6 +84,46 @@ export async function getProjectById(
   }
 }
 
+export async function createProject(payload: CreateProjectPayload): Promise<BackendProject> {
+  const raw = await apiRequest<unknown>("/api/Projects", {
+    method: "POST",
+    requiresAuth: true,
+    body: payload,
+  });
+
+  const project = normalizeProject(raw);
+  if (!project) {
+    throw new Error("Invalid project payload returned by backend.");
+  }
+
+  return project;
+}
+
+export async function updateProject(
+  id: string,
+  payload: UpdateProjectPayload
+): Promise<BackendProject> {
+  const raw = await apiRequest<unknown>(`/api/Projects/${id}`, {
+    method: "PUT",
+    requiresAuth: true,
+    body: payload,
+  });
+
+  const project = normalizeProject(raw);
+  if (!project) {
+    throw new Error("Invalid project payload returned by backend.");
+  }
+
+  return project;
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await apiRequest<void>(`/api/Projects/${id}`, {
+    method: "DELETE",
+    requiresAuth: true,
+  });
+}
+
 function normalizeProject(raw: unknown): BackendProject | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -86,6 +139,11 @@ function normalizeProject(raw: unknown): BackendProject | null {
 
   return {
     id,
+    organizationId: item.organizationId
+      ? String(item.organizationId)
+      : item.OrganizationId
+      ? String(item.OrganizationId)
+      : undefined,
     name,
     key: item.key ? String(item.key) : item.Key ? String(item.Key) : undefined,
     description: item.description

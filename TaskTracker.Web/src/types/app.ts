@@ -76,12 +76,54 @@ export interface SimpleMessageResponse {
 
 export interface BackendProject {
   id: string;
+  organizationId?: string;
   name: string;
   key?: string;
   description?: string;
   status?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface BackendOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BackendEpic {
+  id: string;
+  projectId: string;
+  title: string;
+  description?: string;
+  status: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BackendSprint {
+  id: string;
+  projectId: string;
+  name: string;
+  goal?: string;
+  startDate: string;
+  endDate: string;
+  status: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BackendComment {
+  id: string;
+  taskId: number;
+  authorId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AppNotification {

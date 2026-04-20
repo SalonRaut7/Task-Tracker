@@ -24,6 +24,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Epic> Epics => Set<Epic>();
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<Comment> Comments => Set<Comment>();
+    public DbSet<UserOrganization> UserOrganizations => Set<UserOrganization>();
+    public DbSet<UserProject> UserProjects => Set<UserProject>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

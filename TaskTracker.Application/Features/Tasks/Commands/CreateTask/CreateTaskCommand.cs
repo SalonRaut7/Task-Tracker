@@ -9,7 +9,12 @@ namespace TaskTracker.Application.Features.Tasks.Commands.CreateTask;
 public class CreateTaskCommand : IRequest<TaskDto>, IAuthorizedRequest
 {
     public string RequiredPermission => AppPermissions.TasksCreate;
-    public IReadOnlyList<ResourceScope> Scopes => [];
+    public IReadOnlyList<ResourceScope> Scopes => [new ResourceScope(ResourceType.Project, ProjectId)];
+
+    public Guid ProjectId { get; set; }
+    public Guid? EpicId { get; set; }
+    public Guid? SprintId { get; set; }
+    public string? AssigneeId { get; set; }
 
     public string Title { get; set; } = string.Empty;
 

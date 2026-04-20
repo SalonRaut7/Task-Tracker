@@ -17,4 +17,6 @@ public class Project
     public Organization Organization { get; set; } = null!;
     public ICollection<Sprint> Sprints { get; set; } = new List<Sprint>();
     public ICollection<Epic> Epics { get; set; } = new List<Epic>();
+    public ICollection<TaskItem> Tasks { get; set; } = new List<TaskItem>();
+    public ICollection<UserProject> UserMemberships { get; set; } = new List<UserProject>();
 }

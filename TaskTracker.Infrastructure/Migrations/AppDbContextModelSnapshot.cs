@@ -279,9 +279,6 @@ namespace TaskTracker.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
-                    b.Property<Guid?>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("PasswordHash")
                         .HasColumnType("text");
 
@@ -312,8 +309,6 @@ namespace TaskTracker.Infrastructure.Migrations
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
-
-                    b.HasIndex("OrganizationId");
 
                     b.ToTable("AspNetUsers", (string)null);
                 });
@@ -544,17 +539,34 @@ namespace TaskTracker.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AssigneeId")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateOnly?>("EndDate")
                         .HasColumnType("date");
 
+                    b.Property<Guid?>("EpicId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReporterId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SprintId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateOnly?>("StartDate")
                         .HasColumnType("date");
@@ -564,12 +576,23 @@ namespace TaskTracker.Infrastructure.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssigneeId");
+
+                    b.HasIndex("EpicId");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("ReporterId");
+
+                    b.HasIndex("SprintId");
 
                     b.ToTable("Tasks", t =>
                         {
@@ -577,6 +600,42 @@ namespace TaskTracker.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_Tasks_StartDate_EndDate", "\"StartDate\" IS NULL OR \"EndDate\" IS NULL OR \"StartDate\" <= \"EndDate\"");
                         });
+                });
+
+            modelBuilder.Entity("TaskTracker.Domain.Entities.UserOrganization", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "OrganizationId");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.ToTable("UserOrganizations");
+                });
+
+            modelBuilder.Entity("TaskTracker.Domain.Entities.UserProject", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "ProjectId");
+
+                    b.HasIndex("ProjectId");
+
+                    b.ToTable("UserProjects");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -639,7 +698,7 @@ namespace TaskTracker.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("TaskTracker.Domain.Entities.TaskItem", "Task")
-                        .WithMany()
+                        .WithMany("Comments")
                         .HasForeignKey("TaskId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -658,16 +717,6 @@ namespace TaskTracker.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
-                });
-
-            modelBuilder.Entity("TaskTracker.Domain.Entities.Identity.ApplicationUser", b =>
-                {
-                    b.HasOne("TaskTracker.Domain.Entities.Organization", "Organization")
-                        .WithMany("Members")
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("TaskTracker.Domain.Entities.Identity.OtpEntry", b =>
@@ -725,6 +774,89 @@ namespace TaskTracker.Infrastructure.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("TaskTracker.Domain.Entities.TaskItem", b =>
+                {
+                    b.HasOne("TaskTracker.Domain.Entities.Identity.ApplicationUser", "Assignee")
+                        .WithMany("AssignedTasks")
+                        .HasForeignKey("AssigneeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("TaskTracker.Domain.Entities.Epic", "Epic")
+                        .WithMany("Tasks")
+                        .HasForeignKey("EpicId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("TaskTracker.Domain.Entities.Project", "Project")
+                        .WithMany("Tasks")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaskTracker.Domain.Entities.Identity.ApplicationUser", "Reporter")
+                        .WithMany("ReportedTasks")
+                        .HasForeignKey("ReporterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaskTracker.Domain.Entities.Sprint", "Sprint")
+                        .WithMany("Tasks")
+                        .HasForeignKey("SprintId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Assignee");
+
+                    b.Navigation("Epic");
+
+                    b.Navigation("Project");
+
+                    b.Navigation("Reporter");
+
+                    b.Navigation("Sprint");
+                });
+
+            modelBuilder.Entity("TaskTracker.Domain.Entities.UserOrganization", b =>
+                {
+                    b.HasOne("TaskTracker.Domain.Entities.Organization", "Organization")
+                        .WithMany("UserMemberships")
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaskTracker.Domain.Entities.Identity.ApplicationUser", "User")
+                        .WithMany("OrganizationMemberships")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskTracker.Domain.Entities.UserProject", b =>
+                {
+                    b.HasOne("TaskTracker.Domain.Entities.Project", "Project")
+                        .WithMany("UserMemberships")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaskTracker.Domain.Entities.Identity.ApplicationUser", "User")
+                        .WithMany("ProjectMemberships")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskTracker.Domain.Entities.Epic", b =>
+                {
+                    b.Navigation("Tasks");
+                });
+
             modelBuilder.Entity("TaskTracker.Domain.Entities.Identity.ApplicationRole", b =>
                 {
                     b.Navigation("RolePermissions");
@@ -732,16 +864,24 @@ namespace TaskTracker.Infrastructure.Migrations
 
             modelBuilder.Entity("TaskTracker.Domain.Entities.Identity.ApplicationUser", b =>
                 {
+                    b.Navigation("AssignedTasks");
+
+                    b.Navigation("OrganizationMemberships");
+
                     b.Navigation("OtpEntries");
 
+                    b.Navigation("ProjectMemberships");
+
                     b.Navigation("RefreshTokens");
+
+                    b.Navigation("ReportedTasks");
                 });
 
             modelBuilder.Entity("TaskTracker.Domain.Entities.Organization", b =>
                 {
-                    b.Navigation("Members");
-
                     b.Navigation("Projects");
+
+                    b.Navigation("UserMemberships");
                 });
 
             modelBuilder.Entity("TaskTracker.Domain.Entities.Project", b =>
@@ -749,6 +889,20 @@ namespace TaskTracker.Infrastructure.Migrations
                     b.Navigation("Epics");
 
                     b.Navigation("Sprints");
+
+                    b.Navigation("Tasks");
+
+                    b.Navigation("UserMemberships");
+                });
+
+            modelBuilder.Entity("TaskTracker.Domain.Entities.Sprint", b =>
+                {
+                    b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("TaskTracker.Domain.Entities.TaskItem", b =>
+                {
+                    b.Navigation("Comments");
                 });
 #pragma warning restore 612, 618
         }

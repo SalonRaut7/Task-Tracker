@@ -9,8 +9,11 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { TaskDetailsPage } from "./pages/TaskDetailsPage";
 import { TasksPage } from "./pages/TasksPage";
 import { ForbiddenPage } from "./pages/ForbiddenPage";
+import { OrganizationsPage } from "./pages/OrganizationsPage";
+import { CommentsPage } from "./pages/CommentsPage";
 import { RequirePermission } from "./security/RequirePermission";
 import { AppPermissions } from "./security/permissions";
 
@@ -37,6 +40,14 @@ export default function App() {
           <Route element={<MainLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route
+              path="/organizations"
+              element={
+                <RequirePermission permission={AppPermissions.OrganizationsView}>
+                  <OrganizationsPage />
+                </RequirePermission>
+              }
+            />
+            <Route
               path="/projects"
               element={
                 <RequirePermission permission={AppPermissions.ProjectsView}>
@@ -61,10 +72,34 @@ export default function App() {
               }
             />
             <Route
+              path="/tasks/:projectId/:taskId"
+              element={
+                <RequirePermission permission={AppPermissions.TasksView}>
+                  <TaskDetailsPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="/tasks/details/:taskId"
+              element={
+                <RequirePermission permission={AppPermissions.TasksView}>
+                  <TaskDetailsPage />
+                </RequirePermission>
+              }
+            />
+            <Route
               path="/reports"
               element={
                 <RequirePermission permission={AppPermissions.TasksView}>
                   <ReportsPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="/comments"
+              element={
+                <RequirePermission permission={AppPermissions.CommentsView}>
+                  <CommentsPage />
                 </RequirePermission>
               }
             />

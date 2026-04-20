@@ -25,10 +25,35 @@ let pendingTaskLoad:
 
 const appendBaseFilters = (
   params: URLSearchParams,
+  projectId?: string,
+  epicId?: string,
+  sprintId?: string,
+  assigneeId?: string,
+  reporterId?: string,
   titleContains?: string,
   status?: Status,
   priority?: TaskPriority
 ): void => {
+  if (projectId) {
+    params.append("ProjectId", projectId);
+  }
+
+  if (epicId) {
+    params.append("EpicId", epicId);
+  }
+
+  if (sprintId) {
+    params.append("SprintId", sprintId);
+  }
+
+  if (assigneeId) {
+    params.append("AssigneeId", assigneeId);
+  }
+
+  if (reporterId) {
+    params.append("ReporterId", reporterId);
+  }
+
   if (titleContains) {
     params.append("TitleContains", titleContains);
   }
@@ -44,13 +69,28 @@ const appendBaseFilters = (
 
 const buildLoadUrl = (
   loadOptions: TaskGridLoadOptions,
+  projectId?: string,
+  epicId?: string,
+  sprintId?: string,
+  assigneeId?: string,
+  reporterId?: string,
   titleContains?: string,
   status?: Status,
   priority?: TaskPriority
 ): string => {
   const params = new URLSearchParams();
 
-  appendBaseFilters(params, titleContains, status, priority);
+  appendBaseFilters(
+    params,
+    projectId,
+    epicId,
+    sprintId,
+    assigneeId,
+    reporterId,
+    titleContains,
+    status,
+    priority
+  );
 
   const skip = typeof loadOptions.skip === "number" ? loadOptions.skip : 0;
   const take = typeof loadOptions.take === "number" ? loadOptions.take : 10;
@@ -62,21 +102,51 @@ const buildLoadUrl = (
 };
 
 export const getTasks = async (
+  projectId?: string,
+  epicId?: string,
+  sprintId?: string,
+  assigneeId?: string,
+  reporterId?: string,
   titleContains?: string,
   status?: Status,
   priority?: TaskPriority
 ): Promise<TaskDto[]> => {
-  const response = await loadTasks({}, titleContains, status, priority);
+  const response = await loadTasks(
+    {},
+    projectId,
+    epicId,
+    sprintId,
+    assigneeId,
+    reporterId,
+    titleContains,
+    status,
+    priority
+  );
   return response.data;
 };
 
 export const loadTasks = async (
   loadOptions: TaskGridLoadOptions,
+  projectId?: string,
+  epicId?: string,
+  sprintId?: string,
+  assigneeId?: string,
+  reporterId?: string,
   titleContains?: string,
   status?: Status,
   priority?: TaskPriority
 ): Promise<TaskGridLoadResult> => {
-  const requestUrl = buildLoadUrl(loadOptions, titleContains, status, priority);
+  const requestUrl = buildLoadUrl(
+    loadOptions,
+    projectId,
+    epicId,
+    sprintId,
+    assigneeId,
+    reporterId,
+    titleContains,
+    status,
+    priority
+  );
 
   if (pendingTaskLoad?.requestKey === requestUrl) {
     return pendingTaskLoad.promise;
@@ -129,19 +199,33 @@ export const createTask = async (task: CreateTaskDto): Promise<TaskDto> => {
   });
 };
 
+export const getTaskById = async (
+  id: number,
+  projectId: string
+): Promise<TaskDto | null> => {
+  const query = new URLSearchParams({ projectId });
+  return apiRequest<TaskDto | null>(`${BASE_URL}/${id}?${query.toString()}`, {
+    method: "GET",
+    requiresAuth: true,
+  });
+};
+
 export const updateTask = async (
   id: number,
+  projectId: string,
   task: UpdateTaskDto
 ): Promise<TaskDto> => {
-  return apiRequest<TaskDto>(`${BASE_URL}/${id}`, {
+  const query = new URLSearchParams({ projectId });
+  return apiRequest<TaskDto>(`${BASE_URL}/${id}?${query.toString()}`, {
     method: "PUT",
     body: task,
     requiresAuth: true,
   });
 };
 
-export const deleteTask = async (id: number): Promise<void> => {
-  await apiRequest<void>(`${BASE_URL}/${id}`, {
+export const deleteTask = async (id: number, projectId: string): Promise<void> => {
+  const query = new URLSearchParams({ projectId });
+  await apiRequest<void>(`${BASE_URL}/${id}?${query.toString()}`, {
     method: "DELETE",
     requiresAuth: true,
   });

@@ -1,0 +1,89 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap");
+
+:root {
+  --bg: #f2f6fb;
+  --surface: #ffffff;
+  --surface-soft: #f5f8fd;
+  --text: #0f1b2d;
+  --text-muted: #5f6f86;
+  --border: #d6dfed;
+  --primary: #0f6ae5;
+  --primary-strong: #0a53b8;
+  --accent: #f97316;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --sidebar: #0b1323;
+  --sidebar-text: #cfdaea;
+  --sidebar-active: #17253d;
+  --shadow: 0 18px 40px rgba(16, 24, 40, 0.08);
+  --radius: 14px;
+  --font-sans: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+  --font-display: "Space Grotesk", "Manrope", "Segoe UI", sans-serif;
+}
+
+:root[data-theme="dark"] {
+  --bg: #090d16;
+  --surface: #121929;
+  --surface-soft: #0f1725;
+  --text: #eef2ff;
+  --text-muted: #98a2b3;
+  --border: #263142;
+  --primary: #4f8dff;
+  --primary-strong: #3b78ef;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --sidebar: #050916;
+  --sidebar-text: #a7b2c6;
+  --sidebar-active: #14213a;
+  --shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: radial-gradient(circle at top right, #dbebff, transparent 42%),
+    radial-gradient(circle at 12% 88%, rgba(15, 106, 229, 0.12), transparent 32%),
+    var(--bg);
+  color: var(--text);
+}
+
+:root[data-theme="dark"] body {
+  background: radial-gradient(circle at top right, rgba(52, 103, 203, 0.2), transparent 42%),
+    var(--bg);
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
