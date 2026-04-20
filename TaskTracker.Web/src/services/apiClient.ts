@@ -33,6 +33,12 @@ type RefreshResponse = {
 
 let pendingRefreshPromise: Promise<boolean> | null = null;
 
+function clearStoredAuthSession(): void {
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
 function resolveUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
     return path;
@@ -84,41 +90,49 @@ async function refreshAccessToken(): Promise<boolean> {
 
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
   if (!refreshToken) {
+    clearStoredAuthSession();
     return false;
   }
 
   pendingRefreshPromise = (async () => {
-    const response = await fetch(resolveUrl("/api/Auth/refresh-token"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ refreshToken }),
-    });
+    try {
+      const response = await fetch(resolveUrl("/api/Auth/refresh-token"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ refreshToken }),
+      });
 
-    if (!response.ok) {
+      if (!response.ok) {
+        clearStoredAuthSession();
+        return false;
+      }
+
+      const payload = (await response.json()) as RefreshResponse;
+      const accessToken =
+        typeof payload.accessToken === "string" ? payload.accessToken : "";
+      const nextRefreshToken =
+        typeof payload.refreshToken === "string" ? payload.refreshToken : "";
+
+      if (!accessToken || !nextRefreshToken) {
+        clearStoredAuthSession();
+        return false;
+      }
+
+      localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+      localStorage.setItem(REFRESH_TOKEN_KEY, nextRefreshToken);
+
+      const normalizedUser = tryNormalizeStoredUser(payload.user);
+      if (normalizedUser) {
+        localStorage.setItem(USER_KEY, JSON.stringify(normalizedUser));
+      }
+
+      return true;
+    } catch {
+      clearStoredAuthSession();
       return false;
     }
-
-    const payload = (await response.json()) as RefreshResponse;
-    const accessToken =
-      typeof payload.accessToken === "string" ? payload.accessToken : "";
-    const nextRefreshToken =
-      typeof payload.refreshToken === "string" ? payload.refreshToken : "";
-
-    if (!accessToken || !nextRefreshToken) {
-      return false;
-    }
-
-    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-    localStorage.setItem(REFRESH_TOKEN_KEY, nextRefreshToken);
-
-    const normalizedUser = tryNormalizeStoredUser(payload.user);
-    if (normalizedUser) {
-      localStorage.setItem(USER_KEY, JSON.stringify(normalizedUser));
-    }
-
-    return true;
   })();
 
   try {
@@ -163,10 +177,13 @@ export async function apiRequest<T>(
   options: RequestOptions = {}
 ): Promise<T> {
   const { body, requiresAuth = true, headers, ...rest } = options;
+  const method = (rest.method ?? "GET").toUpperCase();
+  const shouldSendBody =
+    body !== undefined && method !== "GET" && method !== "HEAD";
 
   const resolvedHeaders = new Headers(headers);
 
-  if (body !== undefined && !resolvedHeaders.has("Content-Type")) {
+  if (shouldSendBody && !resolvedHeaders.has("Content-Type")) {
     resolvedHeaders.set("Content-Type", "application/json");
   }
 
@@ -177,7 +194,7 @@ export async function apiRequest<T>(
     }
   }
 
-  const requestBody = body === undefined ? undefined : JSON.stringify(body);
+  const requestBody = shouldSendBody ? JSON.stringify(body) : undefined;
 
   const response = await fetch(resolveUrl(path), {
     ...rest,
