@@ -6,9 +6,20 @@ public sealed class UpdateOrganizationCommandValidator : AbstractValidator<Updat
 {
     public UpdateOrganizationCommandValidator()
     {
-        RuleFor(x => x.Id).NotEmpty();
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Slug).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Description).MaximumLength(1000);
+        RuleFor(x => x.Id)
+            .NotEmpty().WithMessage("Organization ID is required.");
+
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Name is required.")
+            .MaximumLength(200).WithMessage("Name cannot exceed 200 characters.");
+
+        RuleFor(x => x.Slug)
+            .NotEmpty().WithMessage("Slug is required.")
+            .MaximumLength(200).WithMessage("Slug cannot exceed 200 characters.")
+            .Matches(@"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+            .WithMessage("Slug must be URL-safe: lowercase letters, numbers, and hyphens only.");
+
+        RuleFor(x => x.Description)
+            .MaximumLength(1000).WithMessage("Description cannot exceed 1000 characters.");
     }
 }

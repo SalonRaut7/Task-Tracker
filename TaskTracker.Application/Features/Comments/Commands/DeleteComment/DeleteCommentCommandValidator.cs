@@ -6,6 +6,7 @@ public sealed class DeleteCommentCommandValidator : AbstractValidator<DeleteComm
 {
     public DeleteCommentCommandValidator()
     {
-        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.Id)
+            .NotEmpty().WithMessage("Comment ID is required.");
     }
 }

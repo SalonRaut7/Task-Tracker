@@ -6,6 +6,7 @@ public sealed class GetEpicByIdQueryValidator : AbstractValidator<GetEpicByIdQue
 {
     public GetEpicByIdQueryValidator()
     {
-        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.Id)
+            .NotEmpty().WithMessage("Epic ID is required.");
     }
 }

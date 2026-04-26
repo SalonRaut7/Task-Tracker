@@ -14,11 +14,7 @@ import {
   ApiError,
   UNAUTHORIZED_EVENT,
 } from "../services/apiClient";
-import {
-  getPermissionsForRoles,
-  isAppPermission,
-  type AppPermission,
-} from "../security/permissions";
+import type { AppPermission } from "../security/permissions";
 import {
   login as loginRequest,
   logout as logoutRequest,
@@ -33,6 +29,7 @@ import {
   updateTask as updateTaskRequest,
 } from "../services/taskService";
 import { getProjects } from "../services/projectService";
+import { getMyPermissions } from "../services/memberService";
 import type {
   AppNotification,
   AppUser,
@@ -42,13 +39,19 @@ import type {
   ThemeMode,
   VerifyEmailResponse,
 } from "../types/app";
+import type { UserPermissions, ScopeType } from "../types/invitation";
 import type { CreateTaskDto, TaskDto, UpdateTaskDto } from "../types/task";
 import { dateOnlyToIso, isTaskCompleted } from "../utils/taskPresentation";
 
 interface AppContextValue {
   user: AppUser | null;
-  permissions: AppPermission[];
-  hasPermission: (permission: AppPermission) => boolean;
+  userPermissions: UserPermissions | null;
+  permissionsLoaded: boolean;
+  hasPermission: (
+    permission: AppPermission,
+    scopeType?: ScopeType,
+    scopeId?: string
+  ) => boolean;
   isAuthenticated: boolean;
   bootstrapping: boolean;
   loadingData: boolean;
@@ -65,10 +68,15 @@ interface AppContextValue {
   resendOtp: (email: string) => Promise<string>;
   logout: () => Promise<void>;
   refreshWorkspaceData: (options?: { includeTasks?: boolean }) => Promise<void>;
+  refreshPermissions: () => Promise<void>;
   toggleTheme: () => void;
   toggleSidebar: () => void;
   addTask: (task: CreateTaskDto) => Promise<TaskDto>;
-  updateTask: (taskId: number, projectId: string, updates: UpdateTaskDto) => Promise<TaskDto>;
+  updateTask: (
+    taskId: number,
+    projectId: string,
+    updates: UpdateTaskDto
+  ) => Promise<TaskDto>;
   deleteTask: (taskId: number, projectId: string) => Promise<void>;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
@@ -93,9 +101,6 @@ function toAppUser(raw: unknown): AppUser | null {
   const roles = Array.isArray(user.roles)
     ? user.roles.map((role) => String(role)).filter(Boolean)
     : [];
-  const permissions = Array.isArray(user.permissions)
-    ? user.permissions.map((permission) => String(permission)).filter(Boolean)
-    : [];
 
   if (!id || !email || !firstName || !lastName) {
     return null;
@@ -108,7 +113,6 @@ function toAppUser(raw: unknown): AppUser | null {
     lastName,
     fullName: `${firstName} ${lastName}`.trim(),
     roles,
-    permissions,
   };
 }
 
@@ -187,6 +191,9 @@ function saveReadNotificationIds(notifications: AppNotification[]): void {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
+  const [userPermissions, setUserPermissions] =
+    useState<UserPermissions | null>(null);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
@@ -198,17 +205,81 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<ThemeMode>("light");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const permissions = useMemo(() => {
-    const explicitPermissions = (user?.permissions ?? []).filter(isAppPermission);
-    const rolePermissions = getPermissionsForRoles(user?.roles ?? []);
-
-    return Array.from(new Set([...rolePermissions, ...explicitPermissions]));
-  }, [user?.permissions, user?.roles]);
-
+  /**
+   * Scoped permission check.
+   * SuperAdmin → always true.
+   * If scopeType/scopeId provided → checks that specific scope.
+   * If no scope → checks if permission exists in ANY scope.
+   */
   const hasPermission = useCallback(
-    (permission: AppPermission) => permissions.includes(permission),
-    [permissions]
+    (
+      permission: AppPermission,
+      scopeType?: ScopeType,
+      scopeId?: string
+    ): boolean => {
+      if (!userPermissions) return false;
+      if (userPermissions.isSuperAdmin) return true;
+
+      // Check specific scope
+      if (scopeType && scopeId) {
+        if (scopeType === "Organization") {
+          const orgRole = userPermissions.organizationRoles.find(
+            (r) => r.organizationId === scopeId
+          );
+          return orgRole?.permissions.includes(permission) ?? false;
+        }
+        if (scopeType === "Project") {
+          const projRole = userPermissions.projectRoles.find(
+            (r) => r.projectId === scopeId
+          );
+          if (projRole?.permissions.includes(permission)) return true;
+
+          // Fall back to org role. If no direct project membership exists,
+          // resolve organization from loaded projects.
+          const organizationId =
+            projRole?.organizationId ??
+            projects.find((project) => project.id === scopeId)?.organizationId;
+
+          if (!organizationId) {
+            return false;
+          }
+
+          const orgRole = userPermissions.organizationRoles.find(
+            (r) => r.organizationId === organizationId
+          );
+          return orgRole?.permissions.includes(permission) ?? false;
+        }
+      }
+
+      // No scope specified — check if permission exists in ANY scope
+      const inAnyOrg = userPermissions.organizationRoles.some((r) =>
+        r.permissions.includes(permission)
+      );
+      if (inAnyOrg) return true;
+
+      const inAnyProject = userPermissions.projectRoles.some((r) =>
+        r.permissions.includes(permission)
+      );
+      return inAnyProject;
+    },
+    [projects, userPermissions]
   );
+
+  const refreshPermissions = useCallback(async () => {
+    if (!localStorage.getItem(ACCESS_TOKEN_KEY)) {
+      setPermissionsLoaded(false);
+      return;
+    }
+
+    try {
+      const perms = await getMyPermissions();
+      setUserPermissions(perms);
+    } catch {
+      // Silently fail — permissions will be stale until next refresh
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, []);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_KEY) as ThemeMode | null;
@@ -237,6 +308,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (accessToken && parsedUser) {
       setIsAuthenticated(true);
       setUser(parsedUser);
+      setPermissionsLoaded(false);
     }
 
     setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) === "collapsed");
@@ -257,6 +329,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setIsAuthenticated(false);
     setUser(null);
+    setUserPermissions(null);
+    setPermissionsLoaded(false);
     setTasks([]);
     setProjects([]);
     setNotifications([]);
@@ -277,55 +351,64 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [clearSession]);
 
-  const refreshWorkspaceData = useCallback(async (options?: { includeTasks?: boolean }) => {
-    if (!localStorage.getItem(ACCESS_TOKEN_KEY)) {
-      return;
-    }
-
-    const includeTasks = options?.includeTasks ?? true;
-
-    setLoadingData(true);
-
-    try {
-      const [taskResponse, projectResponse] = await Promise.all([
-        includeTasks ? loadTasks({ skip: 0, take: 500 }) : Promise.resolve(null),
-        getProjects(),
-      ]);
-
-      if (taskResponse) {
-        setTasks(taskResponse.data);
-        setNotifications(buildNotifications(taskResponse.data));
-      }
-
-      setProjects(projectResponse.items);
-      setProjectsApiAvailable(projectResponse.available);
-      setProjectsApiMessage(projectResponse.message ?? "");
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        await clearSession(false);
+  const refreshWorkspaceData = useCallback(
+    async (options?: { includeTasks?: boolean }) => {
+      if (!localStorage.getItem(ACCESS_TOKEN_KEY)) {
         return;
       }
 
-      if (error instanceof ApiError && error.status === 403) {
-        setTasks([]);
-        setNotifications([]);
-        setProjects([]);
-        setProjectsApiAvailable(false);
-        setProjectsApiMessage("You do not have permission to load this workspace.");
-        return;
+      const includeTasks = options?.includeTasks ?? true;
+
+      setLoadingData(true);
+
+      try {
+        const [taskResponse, projectResponse] = await Promise.all([
+          includeTasks
+            ? loadTasks({ skip: 0, take: 500 })
+            : Promise.resolve(null),
+          getProjects(),
+        ]);
+
+        if (taskResponse) {
+          setTasks(taskResponse.data);
+          setNotifications(buildNotifications(taskResponse.data));
+        }
+
+        setProjects(projectResponse.items);
+        setProjectsApiAvailable(projectResponse.available);
+        setProjectsApiMessage(projectResponse.message ?? "");
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          await clearSession(false);
+          return;
+        }
+
+        if (error instanceof ApiError && error.status === 403) {
+          setTasks([]);
+          setNotifications([]);
+          setProjects([]);
+          setProjectsApiAvailable(false);
+          setProjectsApiMessage(
+            "You do not have permission to load this workspace."
+          );
+          return;
+        }
+
+        throw error;
+      } finally {
+        setLoadingData(false);
       }
+    },
+    [clearSession]
+  );
 
-      throw error;
-    } finally {
-      setLoadingData(false);
-    }
-  }, [clearSession]);
-
+  // Fetch permissions and workspace data when authenticated
   useEffect(() => {
     if (isAuthenticated) {
+      void refreshPermissions().catch(() => undefined);
       void refreshWorkspaceData().catch(() => undefined);
     }
-  }, [isAuthenticated, refreshWorkspaceData]);
+  }, [isAuthenticated, refreshPermissions, refreshWorkspaceData]);
 
   const login = async (email: string, password: string): Promise<void> => {
     const auth = await loginRequest(email.trim(), password);
@@ -340,10 +423,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
 
     setUser(nextUser);
+    setPermissionsLoaded(false);
     setIsAuthenticated(true);
   };
 
-  const register = async (payload: RegisterPayload): Promise<RegisterResponse> => {
+  const register = async (
+    payload: RegisterPayload
+  ): Promise<RegisterResponse> => {
     return registerRequest(payload);
   };
 
@@ -351,7 +437,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     email: string,
     otpCode: string
   ): Promise<VerifyEmailResponse> => {
-    return verifyEmailRequest({ email: email.trim(), otpCode: otpCode.trim() });
+    return verifyEmailRequest({
+      email: email.trim(),
+      otpCode: otpCode.trim(),
+    });
   };
 
   const resendOtp = async (email: string): Promise<string> => {
@@ -404,7 +493,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return updated;
   };
 
-  const deleteTask = async (taskId: number, projectId: string): Promise<void> => {
+  const deleteTask = async (
+    taskId: number,
+    projectId: string
+  ): Promise<void> => {
     await deleteTaskRequest(taskId, projectId);
     setTasks((prev) => {
       const next = prev.filter((task) => task.id !== taskId);
@@ -434,7 +526,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppContextValue>(
     () => ({
       user,
-      permissions,
+      userPermissions,
+      permissionsLoaded,
       hasPermission,
       isAuthenticated,
       bootstrapping,
@@ -452,6 +545,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       resendOtp,
       logout,
       refreshWorkspaceData,
+      refreshPermissions,
       toggleTheme,
       toggleSidebar,
       addTask,
@@ -462,7 +556,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }),
     [
       user,
-      permissions,
+      userPermissions,
+      permissionsLoaded,
       hasPermission,
       isAuthenticated,
       bootstrapping,
@@ -475,6 +570,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       theme,
       sidebarCollapsed,
       refreshWorkspaceData,
+      refreshPermissions,
     ]
   );
 

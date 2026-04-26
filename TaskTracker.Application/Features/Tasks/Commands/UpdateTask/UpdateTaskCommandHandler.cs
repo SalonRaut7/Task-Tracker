@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Domain.Constants;
+using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Interfaces;
 using TaskTracker.Application.Options;
 
@@ -15,17 +16,20 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
     private readonly IMapper              _mapper;
     private readonly TaskDateRulesOptions _taskDateRules;
     private readonly ICurrentUserService  _currentUser;
+    private readonly IPermissionEvaluator _permissionEvaluator;
 
     public UpdateTaskCommandHandler(
         ITaskRepository taskRepository,
         IMapper mapper,
         IOptions<TaskDateRulesOptions> taskDateRules,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        IPermissionEvaluator permissionEvaluator)
     {
         _taskRepository = taskRepository;
         _mapper = mapper;
         _taskDateRules = taskDateRules.Value;
         _currentUser = currentUser;
+        _permissionEvaluator = permissionEvaluator;
     }
 
     public async Task<TaskDto?> Handle(
@@ -69,22 +73,35 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
         }
 
         var assigneeId = string.IsNullOrWhiteSpace(command.AssigneeId) ? null : command.AssigneeId.Trim();
-        if (!string.IsNullOrWhiteSpace(assigneeId))
+        var currentUserId = _currentUser.UserId!;
+
+        if (assigneeId != task.AssigneeId)
         {
-            var canAssignTasks = _currentUser.Permissions.Contains(AppPermissions.TasksAssign, StringComparer.OrdinalIgnoreCase);
-            if (!canAssignTasks)
+            bool isSelfAssigning = assigneeId == currentUserId;
+            bool isSelfUnassigning = assigneeId == null && task.AssigneeId == currentUserId;
+
+            if (!isSelfAssigning && !isSelfUnassigning)
             {
-                throw new ForbiddenAccessException($"Missing required permission '{AppPermissions.TasksAssign}'.");
+                var canAssignTasks = await _permissionEvaluator.HasPermissionAsync(
+                    currentUserId, AppPermissions.TasksAssign, ScopeType.Project, command.ProjectId, cancellationToken);
+                
+                if (!canAssignTasks)
+                {
+                    throw new ForbiddenAccessException($"Missing required permission '{AppPermissions.TasksAssign}'.");
+                }
             }
 
-            var canAssignUserToProject = await _taskRepository.CanAssignUserToProjectAsync(
-                assigneeId,
-                command.ProjectId,
-                cancellationToken);
-
-            if (!canAssignUserToProject)
+            if (assigneeId != null)
             {
-                throw new InvalidOperationException("Assignee must belong to both the selected project and its organization.");
+                var canAssignUserToProject = await _taskRepository.CanAssignUserToProjectAsync(
+                    assigneeId,
+                    command.ProjectId,
+                    cancellationToken);
+
+                if (!canAssignUserToProject)
+                {
+                    throw new InvalidOperationException("Assignee must belong to both the selected project and its organization.");
+                }
             }
         }
 

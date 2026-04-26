@@ -10,7 +10,17 @@ public class UserOrganizationConfiguration : IEntityTypeConfiguration<UserOrgani
     {
         builder.HasKey(membership => new { membership.UserId, membership.OrganizationId });
 
+        builder.Property(membership => membership.Role)
+            .IsRequired()
+            .HasMaxLength(50);
+
+        builder.Property(membership => membership.InvitedByUserId)
+            .HasMaxLength(450);
+
         builder.Property(membership => membership.JoinedAt)
+            .IsRequired();
+
+        builder.Property(membership => membership.UpdatedAt)
             .IsRequired();
 
         builder.HasOne(membership => membership.User)
@@ -22,5 +32,10 @@ public class UserOrganizationConfiguration : IEntityTypeConfiguration<UserOrgani
             .WithMany(organization => organization.UserMemberships)
             .HasForeignKey(membership => membership.OrganizationId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(membership => membership.InvitedByUser)
+            .WithMany()
+            .HasForeignKey(membership => membership.InvitedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

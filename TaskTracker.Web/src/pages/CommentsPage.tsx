@@ -6,7 +6,7 @@ import Popup from "devextreme-react/popup";
 import TextArea from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
 import { useApp } from "../context/AppContext";
-import { ApiError } from "../services/apiClient";
+import { getErrorMessage } from "../utils/getErrorMessage";
 import {
   createComment,
   deleteComment,
@@ -45,13 +45,7 @@ export function CommentsPage() {
       const result = await getComments(taskIdFilter ?? undefined);
       setComments(result);
     } catch (error) {
-      if (error instanceof ApiError) {
-        setRequestError(error.message);
-      } else if (error instanceof Error) {
-        setRequestError(error.message);
-      } else {
-        setRequestError("Failed to load comments.");
-      }
+      setRequestError(getErrorMessage(error, "Failed to load comments."));
     } finally {
       setLoading(false);
     }
@@ -84,13 +78,7 @@ export function CommentsPage() {
       setNewCommentTaskId(null);
       setNewCommentContent("");
     } catch (error) {
-      if (error instanceof ApiError) {
-        setRequestError(error.message);
-      } else if (error instanceof Error) {
-        setRequestError(error.message);
-      } else {
-        setRequestError("Failed to create comment.");
-      }
+      setRequestError(getErrorMessage(error, "Failed to create comment."));
     }
   };
 
@@ -116,13 +104,7 @@ export function CommentsPage() {
       setComments((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       setSelectedComment(updated);
     } catch (error) {
-      if (error instanceof ApiError) {
-        setRequestError(error.message);
-      } else if (error instanceof Error) {
-        setRequestError(error.message);
-      } else {
-        setRequestError("Failed to update comment.");
-      }
+      setRequestError(getErrorMessage(error, "Failed to update comment."));
     }
   };
 
@@ -143,13 +125,7 @@ export function CommentsPage() {
       setComments((prev) => prev.filter((item) => item.id !== selectedComment.id));
       setSelectedComment(null);
     } catch (error) {
-      if (error instanceof ApiError) {
-        setRequestError(error.message);
-      } else if (error instanceof Error) {
-        setRequestError(error.message);
-      } else {
-        setRequestError("Failed to delete comment.");
-      }
+      setRequestError(getErrorMessage(error, "Failed to delete comment."));
     }
   };
 
@@ -241,6 +217,7 @@ export function CommentsPage() {
             Content
             <TextArea
               value={newCommentContent}
+              maxLength={5000}
               minHeight={100}
               onValueChanged={(event) => setNewCommentContent(String(event.value ?? ""))}
             />
@@ -270,6 +247,7 @@ export function CommentsPage() {
               Content
               <TextArea
                 value={editContent}
+                maxLength={5000}
                 minHeight={120}
                 onValueChanged={(event) => setEditContent(String(event.value ?? ""))}
               />

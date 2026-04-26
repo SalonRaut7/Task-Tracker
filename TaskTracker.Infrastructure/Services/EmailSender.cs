@@ -60,6 +60,36 @@ public class EmailSender : IEmailSender
         await SendEmailAsync(toEmail, subject, body, cancellationToken);
     }
 
+    public async Task SendInviteAsync(
+        string toEmail,
+        string inviterName,
+        string scopeName,
+        string role,
+        string inviteLink,
+        CancellationToken cancellationToken = default)
+    {
+        var subject = $"TaskTracker — You've been invited to {scopeName}";
+
+        var body = $@"
+<html>
+<body style='font-family: Arial, sans-serif; color: #333;'>
+    <h2 style='color: #4F46E5;'>TaskTracker</h2>
+    <p><strong>{inviterName}</strong> has invited you to join <strong>{scopeName}</strong> as a <strong>{role}</strong>.</p>
+    <p>Click the button below to accept the invitation:</p>
+    <p style='margin: 24px 0;'>
+        <a href='{inviteLink}'
+           style='background: #4F46E5; color: #fff; padding: 12px 24px; border-radius: 6px;
+                  text-decoration: none; font-weight: bold; display: inline-block;'>
+            Accept Invitation
+        </a>
+    </p>
+    <p style='color: #888; font-size: 12px;'>This invitation expires in 7 days. If you did not expect this, please ignore this email.</p>
+</body>
+</html>";
+
+        await SendEmailAsync(toEmail, subject, body, cancellationToken);
+    }
+
     private async Task SendEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken)
     {
         // If SMTP is not configured, fall back to logging

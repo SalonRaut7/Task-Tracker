@@ -6,7 +6,11 @@ public sealed class UpdateCommentCommandValidator : AbstractValidator<UpdateComm
 {
     public UpdateCommentCommandValidator()
     {
-        RuleFor(x => x.Id).NotEmpty();
-        RuleFor(x => x.Content).NotEmpty().MaximumLength(5000);
+        RuleFor(x => x.Id)
+            .NotEmpty().WithMessage("Comment ID is required.");
+
+        RuleFor(x => x.Content)
+            .NotEmpty().WithMessage("Comment content is required.")
+            .MaximumLength(5000).WithMessage("Comment content cannot exceed 5000 characters.");
     }
 }

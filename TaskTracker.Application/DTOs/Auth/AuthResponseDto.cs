@@ -15,5 +15,4 @@ public class UserDto
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public IList<string> Roles { get; set; } = new List<string>();
-    public IList<string> Permissions { get; set; } = new List<string>();
 }

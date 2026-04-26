@@ -1,15 +1,13 @@
 using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TaskTracker.Application.Options;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities.Identity;
-using TaskTracker.Infrastructure.Data;
 
 namespace TaskTracker.Infrastructure.Data.Seed;
 
 /// <summary>
-/// Seeds default roles, role-permission mappings, and a SuperAdmin user at startup.
+/// Seeds default roles and a SuperAdmin user at startup.
 /// Idempotent — safe to run on every application start.
 /// </summary>
 public static class IdentitySeeder
@@ -17,7 +15,6 @@ public static class IdentitySeeder
     public static async Task SeedAsync(
         RoleManager<ApplicationRole> roleManager,
         UserManager<ApplicationUser> userManager,
-        AppDbContext dbContext,
         AdminSeedOptions adminSeedOptions,
         ILogger logger)
     {
@@ -41,34 +38,7 @@ public static class IdentitySeeder
             }
         }
 
-        // ── 2. Seed role → permission mappings ─────────────────
-        foreach (var roleName in AppRoles.All)
-        {
-            var role = await roleManager.FindByNameAsync(roleName);
-            if (role is null) continue;
-
-            var permissions = AppPermissions.GetPermissionsForRole(roleName);
-            var existingPermissions = await dbContext.RolePermissions
-                .Where(rp => rp.RoleId == role.Id)
-                .Select(rp => rp.Permission)
-                .ToListAsync();
-
-            foreach (var permission in permissions)
-            {
-                if (!existingPermissions.Contains(permission))
-                {
-                    dbContext.RolePermissions.Add(new RolePermission
-                    {
-                        RoleId = role.Id,
-                        Permission = permission
-                    });
-                }
-            }
-        }
-        await dbContext.SaveChangesAsync();
-        logger.LogInformation("Role-permission mappings seeded.");
-
-        // ── 3. Seed SuperAdmin user ────────────────────────────
+        // ── 2. Seed SuperAdmin user ────────────────────────────
         if (!adminSeedOptions.Enabled)
         {
             logger.LogInformation("SuperAdmin seeding is disabled via configuration.");

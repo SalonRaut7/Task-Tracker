@@ -40,14 +40,7 @@ const emptySprintForm: SprintForm = {
   status: 0,
 };
 
-function toDateOnly(value: unknown): string {
-  if (!value) return "";
-
-  const date = new Date(value as string | number | Date);
-  if (Number.isNaN(date.getTime())) return "";
-
-  return date.toISOString().split("T")[0];
-}
+import { toDateOnly } from "../../utils/toDateOnly";
 
 type SprintsSectionProps = {
   projectId: string;
@@ -136,6 +129,11 @@ export function SprintsSection({
 
     if (!createForm.startDate || !createForm.endDate) {
       setCreateError("Sprint start and end dates are required.");
+      return;
+    }
+
+    if (createForm.startDate > createForm.endDate) {
+      setCreateError("Sprint end date must be on or after start date.");
       return;
     }
 
@@ -330,6 +328,7 @@ export function SprintsSection({
             Name
             <TextBox
               value={createForm.name}
+              maxLength={200}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({
                   ...prev,
@@ -343,6 +342,7 @@ export function SprintsSection({
             Goal
             <TextArea
               value={createForm.goal}
+              maxLength={1000}
               minHeight={80}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({
@@ -439,6 +439,7 @@ export function SprintsSection({
               Name
               <TextBox
                 value={editForm.name}
+                maxLength={200}
                 readOnly={popupMode === "view"}
                 onValueChanged={(event) =>
                   setEditForm((prev) => ({
@@ -453,6 +454,7 @@ export function SprintsSection({
               Goal
               <TextArea
                 value={editForm.goal}
+                maxLength={1000}
                 minHeight={80}
                 readOnly={popupMode === "view"}
                 onValueChanged={(event) =>

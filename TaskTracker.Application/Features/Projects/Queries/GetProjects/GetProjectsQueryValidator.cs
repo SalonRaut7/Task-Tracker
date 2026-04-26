@@ -6,6 +6,8 @@ public sealed class GetProjectsQueryValidator : AbstractValidator<GetProjectsQue
 {
     public GetProjectsQueryValidator()
     {
-        RuleFor(x => x.OrganizationId).NotEmpty().When(x => x.OrganizationId.HasValue);
+        RuleFor(x => x.OrganizationId)
+            .NotEmpty().WithMessage("Organization ID cannot be an empty GUID when provided.")
+            .When(x => x.OrganizationId.HasValue);
     }
 }

@@ -1,8 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
-using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Sprints.Queries.GetSprints;
@@ -11,16 +9,16 @@ public sealed class GetSprintsQueryHandler : IRequestHandler<GetSprintsQuery, IR
 {
     private readonly ISprintRepository _sprintRepository;
     private readonly ICurrentUserService _currentUser;
-    private readonly IUserResourceAccessService _resourceAccessService;
+    private readonly IMembershipRepository _membershipRepository;
 
     public GetSprintsQueryHandler(
         ISprintRepository sprintRepository,
         ICurrentUserService currentUser,
-        IUserResourceAccessService resourceAccessService)
+        IMembershipRepository membershipRepository)
     {
         _sprintRepository = sprintRepository;
         _currentUser = currentUser;
-        _resourceAccessService = resourceAccessService;
+        _membershipRepository = membershipRepository;
     }
 
     public async Task<IReadOnlyList<SprintDto>> Handle(GetSprintsQuery request, CancellationToken cancellationToken)
@@ -32,7 +30,7 @@ public sealed class GetSprintsQueryHandler : IRequestHandler<GetSprintsQuery, IR
             query = query.Where(sprint => sprint.ProjectId == request.ProjectId.Value);
         }
 
-        if (!_currentUser.Roles.Contains(AppRoles.SuperAdmin, StringComparer.OrdinalIgnoreCase))
+        if (!_currentUser.IsSuperAdmin)
         {
             var userId = _currentUser.UserId;
             if (string.IsNullOrWhiteSpace(userId))
@@ -40,7 +38,7 @@ public sealed class GetSprintsQueryHandler : IRequestHandler<GetSprintsQuery, IR
                 throw new UnauthorizedAccessException("Authentication is required.");
             }
 
-            var organizationIds = await _resourceAccessService.GetUserOrganizationIdsAsync(userId, cancellationToken);
+            var organizationIds = await _membershipRepository.GetUserOrganizationIdsAsync(userId, cancellationToken);
             if (organizationIds.Count == 0)
             {
                 return [];

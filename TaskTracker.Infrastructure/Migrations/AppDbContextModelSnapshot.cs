@@ -397,27 +397,71 @@ namespace TaskTracker.Infrastructure.Migrations
                     b.ToTable("RefreshTokens");
                 });
 
-            modelBuilder.Entity("TaskTracker.Domain.Entities.Identity.RolePermission", b =>
+            modelBuilder.Entity("TaskTracker.Domain.Entities.Invitation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Permission")
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InvitedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("InviteeEmail")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("InviteeUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ScopeType")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
-                    b.Property<string>("RoleId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("RoleId", "Permission")
+                    b.HasIndex("InvitedByUserId");
+
+                    b.HasIndex("TokenHash")
                         .IsUnique();
 
-                    b.ToTable("RolePermissions");
+                    b.HasIndex("ScopeType", "ScopeId");
+
+                    b.HasIndex("ScopeType", "ScopeId", "InviteeEmail")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 0");
+
+                    b.ToTable("Invitations", (string)null);
                 });
 
             modelBuilder.Entity("TaskTracker.Domain.Entities.Organization", b =>
@@ -610,10 +654,24 @@ namespace TaskTracker.Infrastructure.Migrations
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("InvitedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
                     b.Property<DateTime>("JoinedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("UserId", "OrganizationId");
+
+                    b.HasIndex("InvitedByUserId");
 
                     b.HasIndex("OrganizationId");
 
@@ -628,10 +686,24 @@ namespace TaskTracker.Infrastructure.Migrations
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("InvitedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
                     b.Property<DateTime>("JoinedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("UserId", "ProjectId");
+
+                    b.HasIndex("InvitedByUserId");
 
                     b.HasIndex("ProjectId");
 
@@ -741,15 +813,15 @@ namespace TaskTracker.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("TaskTracker.Domain.Entities.Identity.RolePermission", b =>
+            modelBuilder.Entity("TaskTracker.Domain.Entities.Invitation", b =>
                 {
-                    b.HasOne("TaskTracker.Domain.Entities.Identity.ApplicationRole", "Role")
-                        .WithMany("RolePermissions")
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                    b.HasOne("TaskTracker.Domain.Entities.Identity.ApplicationUser", "InvitedByUser")
+                        .WithMany()
+                        .HasForeignKey("InvitedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Role");
+                    b.Navigation("InvitedByUser");
                 });
 
             modelBuilder.Entity("TaskTracker.Domain.Entities.Project", b =>
@@ -816,6 +888,11 @@ namespace TaskTracker.Infrastructure.Migrations
 
             modelBuilder.Entity("TaskTracker.Domain.Entities.UserOrganization", b =>
                 {
+                    b.HasOne("TaskTracker.Domain.Entities.Identity.ApplicationUser", "InvitedByUser")
+                        .WithMany()
+                        .HasForeignKey("InvitedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("TaskTracker.Domain.Entities.Organization", "Organization")
                         .WithMany("UserMemberships")
                         .HasForeignKey("OrganizationId")
@@ -828,6 +905,8 @@ namespace TaskTracker.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("InvitedByUser");
+
                     b.Navigation("Organization");
 
                     b.Navigation("User");
@@ -835,6 +914,11 @@ namespace TaskTracker.Infrastructure.Migrations
 
             modelBuilder.Entity("TaskTracker.Domain.Entities.UserProject", b =>
                 {
+                    b.HasOne("TaskTracker.Domain.Entities.Identity.ApplicationUser", "InvitedByUser")
+                        .WithMany()
+                        .HasForeignKey("InvitedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("TaskTracker.Domain.Entities.Project", "Project")
                         .WithMany("UserMemberships")
                         .HasForeignKey("ProjectId")
@@ -847,6 +931,8 @@ namespace TaskTracker.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("InvitedByUser");
+
                     b.Navigation("Project");
 
                     b.Navigation("User");
@@ -855,11 +941,6 @@ namespace TaskTracker.Infrastructure.Migrations
             modelBuilder.Entity("TaskTracker.Domain.Entities.Epic", b =>
                 {
                     b.Navigation("Tasks");
-                });
-
-            modelBuilder.Entity("TaskTracker.Domain.Entities.Identity.ApplicationRole", b =>
-                {
-                    b.Navigation("RolePermissions");
                 });
 
             modelBuilder.Entity("TaskTracker.Domain.Entities.Identity.ApplicationUser", b =>

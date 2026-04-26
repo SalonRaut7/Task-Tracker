@@ -1,8 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
-using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Comments.Queries.GetComments;
@@ -11,23 +9,23 @@ public sealed class GetCommentsQueryHandler : IRequestHandler<GetCommentsQuery, 
 {
     private readonly ICommentRepository _commentRepository;
     private readonly ICurrentUserService _currentUser;
-    private readonly IUserResourceAccessService _resourceAccessService;
+    private readonly IMembershipRepository _membershipRepository;
 
     public GetCommentsQueryHandler(
         ICommentRepository commentRepository,
         ICurrentUserService currentUser,
-        IUserResourceAccessService resourceAccessService)
+        IMembershipRepository membershipRepository)
     {
         _commentRepository = commentRepository;
         _currentUser = currentUser;
-        _resourceAccessService = resourceAccessService;
+        _membershipRepository = membershipRepository;
     }
 
     public async Task<IReadOnlyList<CommentDto>> Handle(GetCommentsQuery request, CancellationToken cancellationToken)
     {
         var query = _commentRepository.Query();
 
-        if (!_currentUser.Roles.Contains(AppRoles.SuperAdmin, StringComparer.OrdinalIgnoreCase))
+        if (!_currentUser.IsSuperAdmin)
         {
             var userId = _currentUser.UserId;
             if (string.IsNullOrWhiteSpace(userId))
@@ -35,21 +33,8 @@ public sealed class GetCommentsQueryHandler : IRequestHandler<GetCommentsQuery, 
                 throw new UnauthorizedAccessException("Authentication is required.");
             }
 
-            if (request.TaskId.HasValue)
-            {
-                var canAccessTask = await _resourceAccessService.CanAccessTaskAsync(
-                    userId,
-                    request.TaskId.Value,
-                    cancellationToken);
-
-                if (!canAccessTask)
-                {
-                    throw new ForbiddenAccessException($"No access to task '{request.TaskId.Value}'.");
-                }
-            }
-
-            var organizationIds = await _resourceAccessService.GetUserOrganizationIdsAsync(userId, cancellationToken);
-            var projectIds = await _resourceAccessService.GetUserProjectIdsAsync(userId, cancellationToken);
+            var organizationIds = await _membershipRepository.GetUserOrganizationIdsAsync(userId, cancellationToken);
+            var projectIds = await _membershipRepository.GetUserProjectIdsAsync(userId, cancellationToken);
 
             if (organizationIds.Count == 0 || projectIds.Count == 0)
             {

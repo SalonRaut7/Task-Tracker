@@ -76,18 +76,14 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponseDto
 
         await _userManager.ResetAccessFailedCountAsync(user);
 
-        // Get roles and permissions
-        var roles = await _userManager.GetRolesAsync(user);
-        var permissions = new List<string>();
-        foreach (var role in roles)
-        {
-            var rolePermissions = AppPermissions.GetPermissionsForRole(role);
-            permissions.AddRange(rolePermissions);
-        }
-        permissions = permissions.Distinct().ToList();
+        // Keep JWT/global role claims lean: only SuperAdmin is emitted.
+        var allRoles = await _userManager.GetRolesAsync(user);
+        var globalRoles = allRoles
+            .Where(r => string.Equals(r, AppRoles.SuperAdmin, StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
-        // Generate tokens
-        var accessToken = _tokenService.GenerateAccessToken(user, roles, permissions);
+        // Generate lean tokens (no permissions in JWT — fetched via /api/me/permissions)
+        var accessToken = _tokenService.GenerateAccessToken(user, globalRoles);
         var refreshToken = _tokenService.GenerateRefreshToken();
         var refreshTokenHash = _tokenService.HashToken(refreshToken);
 
@@ -114,8 +110,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponseDto
                 Email = user.Email!,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
-                Roles = roles,
-                Permissions = permissions
+                Roles = globalRoles
             }
         };
     }

@@ -4,6 +4,7 @@ using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities;
+using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Tasks.Commands.CreateTask;
@@ -13,15 +14,18 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskD
     private readonly ITaskRepository _taskRepository;
     private readonly IMapper _mapper;
     private readonly ICurrentUserService _currentUser;
+    private readonly IPermissionEvaluator _permissionEvaluator;
 
     public CreateTaskCommandHandler(
         ITaskRepository taskRepository,
         IMapper mapper,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        IPermissionEvaluator permissionEvaluator)
     {
         _taskRepository = taskRepository;
         _mapper = mapper;
         _currentUser = currentUser;
+        _permissionEvaluator = permissionEvaluator;
     }
 
     public async Task<TaskDto> Handle(
@@ -68,9 +72,10 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskD
         }
 
         var assigneeId = string.IsNullOrWhiteSpace(command.AssigneeId) ? null : command.AssigneeId.Trim();
-        if (!string.IsNullOrWhiteSpace(assigneeId))
+        if (!string.IsNullOrWhiteSpace(assigneeId) && assigneeId != currentUserId)
         {
-            var canAssignTasks = _currentUser.Permissions.Contains(AppPermissions.TasksAssign, StringComparer.OrdinalIgnoreCase);
+            var canAssignTasks = await _permissionEvaluator.HasPermissionAsync(
+                currentUserId, AppPermissions.TasksAssign, ScopeType.Project, command.ProjectId, cancellationToken);
             if (!canAssignTasks)
             {
                 throw new ForbiddenAccessException($"Missing required permission '{AppPermissions.TasksAssign}'.");

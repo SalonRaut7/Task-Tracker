@@ -6,6 +6,8 @@ public sealed class GetEpicsQueryValidator : AbstractValidator<GetEpicsQuery>
 {
     public GetEpicsQueryValidator()
     {
-        RuleFor(x => x.ProjectId).NotEmpty().When(x => x.ProjectId.HasValue);
+        RuleFor(x => x.ProjectId)
+            .NotEmpty().WithMessage("Project ID cannot be an empty GUID when provided.")
+            .When(x => x.ProjectId.HasValue);
     }
 }

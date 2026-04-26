@@ -145,7 +145,7 @@ async function refreshAccessToken(): Promise<boolean> {
 async function readError(response: Response): Promise<ApiError> {
   const contentType = response.headers.get("content-type") ?? "";
 
-  if (contentType.includes("application/json")) {
+  if (contentType.includes("json")) {
     const payload = (await response.json()) as ProblemDetailsResponse;
 
     const modelErrors = payload.errors

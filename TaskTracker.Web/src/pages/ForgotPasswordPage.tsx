@@ -8,7 +8,7 @@ import {
   verifyPasswordResetOtp,
 } from "../services/authService";
 import { useApp } from "../context/AppContext";
-import { ApiError } from "../services/apiClient";
+import { getErrorMessage } from "../utils/getErrorMessage";
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -89,13 +89,7 @@ export function ForgotPasswordPage() {
       setStep("verify");
       setResendCooldownSeconds(RESEND_COOLDOWN_SECONDS);
     } catch (requestError) {
-      if (requestError instanceof ApiError) {
-        setError(requestError.message);
-      } else if (requestError instanceof Error) {
-        setError(requestError.message);
-      } else {
-        setError("Unable to process your request right now.");
-      }
+      setError(getErrorMessage(requestError, "Unable to process your request right now."));
     } finally {
       setLoading(false);
     }
@@ -121,13 +115,7 @@ export function ForgotPasswordPage() {
       setInfo(response.message);
       setStep("reset");
     } catch (requestError) {
-      if (requestError instanceof ApiError) {
-        setError(requestError.message);
-      } else if (requestError instanceof Error) {
-        setError(requestError.message);
-      } else {
-        setError("Unable to verify reset code right now.");
-      }
+      setError(getErrorMessage(requestError, "Unable to verify reset code right now."));
     } finally {
       setLoading(false);
     }
@@ -170,13 +158,7 @@ export function ForgotPasswordPage() {
       setInfo(response.message);
       navigate("/login", { replace: true, state: { passwordResetSuccess: true } });
     } catch (requestError) {
-      if (requestError instanceof ApiError) {
-        setError(requestError.message);
-      } else if (requestError instanceof Error) {
-        setError(requestError.message);
-      } else {
-        setError("Unable to reset password right now.");
-      }
+      setError(getErrorMessage(requestError, "Unable to reset password right now."));
     } finally {
       setLoading(false);
     }
@@ -196,13 +178,7 @@ export function ForgotPasswordPage() {
       setInfo(response.message);
       setResendCooldownSeconds(RESEND_COOLDOWN_SECONDS);
     } catch (requestError) {
-      if (requestError instanceof ApiError) {
-        setError(requestError.message);
-      } else if (requestError instanceof Error) {
-        setError(requestError.message);
-      } else {
-        setError("Unable to resend reset code right now.");
-      }
+      setError(getErrorMessage(requestError, "Unable to resend reset code right now."));
     } finally {
       setResendLoading(false);
     }
@@ -249,6 +225,7 @@ export function ForgotPasswordPage() {
             <TextBox
               mode="email"
               value={email}
+              maxLength={256}
               onValueChanged={(event) => setEmail(String(event.value))}
               placeholder="you@example.com"
               stylingMode="outlined"
@@ -261,6 +238,7 @@ export function ForgotPasswordPage() {
                 Reset code
                 <TextBox
                   value={otpCode}
+                  maxLength={6}
                   onValueChanged={(event) => setOtpCode(String(event.value ?? ""))}
                   placeholder="6-digit code"
                   stylingMode="outlined"
@@ -293,6 +271,7 @@ export function ForgotPasswordPage() {
                   <TextBox
                     mode={showNewPassword ? "text" : "password"}
                     value={newPassword}
+                    maxLength={128}
                     onValueChanged={(event) => setNewPassword(String(event.value ?? ""))}
                     placeholder="8+ chars, upper/lower/number/symbol"
                     stylingMode="outlined"
@@ -314,6 +293,7 @@ export function ForgotPasswordPage() {
                   <TextBox
                     mode={showConfirmPassword ? "text" : "password"}
                     value={confirmPassword}
+                    maxLength={128}
                     onValueChanged={(event) => setConfirmPassword(String(event.value ?? ""))}
                     placeholder="Repeat new password"
                     stylingMode="outlined"

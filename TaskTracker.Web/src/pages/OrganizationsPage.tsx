@@ -3,6 +3,7 @@ import { Button } from "devextreme-react/button";
 import DataGrid, { Column, Paging } from "devextreme-react/data-grid";
 import TextArea from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
+import { useNavigate } from "react-router-dom";
 import { Modal } from "../components/Modal";
 import { useApp } from "../context/AppContext";
 import { AppPermissions } from "../security/permissions";
@@ -39,11 +40,13 @@ function toSlug(input: string): string {
 }
 
 export function OrganizationsPage() {
+  const navigate = useNavigate();
   const { hasPermission } = useApp();
 
   const canCreate = hasPermission(AppPermissions.OrganizationsCreate);
-  const canUpdate = hasPermission(AppPermissions.OrganizationsUpdate);
-  const canDelete = hasPermission(AppPermissions.OrganizationsDelete);
+  const canUpdateOrg = useCallback((orgId: string) => hasPermission(AppPermissions.OrganizationsUpdate, "Organization", orgId), [hasPermission]);
+  const canDeleteOrg = useCallback((orgId: string) => hasPermission(AppPermissions.OrganizationsDelete, "Organization", orgId), [hasPermission]);
+  const canViewOrgMembers = useCallback((orgId: string) => hasPermission(AppPermissions.MembersView, "Organization", orgId), [hasPermission]);
 
   const [organizations, setOrganizations] = useState<BackendOrganization[]>([]);
   const [query, setQuery] = useState("");
@@ -158,8 +161,8 @@ export function OrganizationsPage() {
       return;
     }
 
-    if (!canUpdate) {
-      setEditError("You do not have permission to update organizations.");
+    if (!canUpdateOrg(selectedOrganization.id)) {
+      setEditError("You do not have permission to update this organization.");
       return;
     }
 
@@ -196,12 +199,12 @@ export function OrganizationsPage() {
     } catch (error) {
       setEditError(getErrorMessage(error, "Failed to update organization."));
     }
-  }, [canUpdate, editForm, selectedOrganization]);
+  }, [canUpdateOrg, editForm, selectedOrganization]);
 
   const handleDeleteFromGrid = useCallback(
     async (organization: BackendOrganization) => {
-      if (!canDelete) {
-        setPageError("You do not have permission to delete organizations.");
+      if (!canDeleteOrg(organization.id)) {
+        setPageError("You do not have permission to delete this organization.");
         return;
       }
 
@@ -223,7 +226,7 @@ export function OrganizationsPage() {
         setPageError(getErrorMessage(error, "Failed to delete organization."));
       }
     },
-    [canDelete, closeDetailsPopup, selectedOrganization]
+    [canDeleteOrg, closeDetailsPopup, selectedOrganization]
   );
 
   return (
@@ -293,7 +296,7 @@ export function OrganizationsPage() {
           />
           <Column
             caption="Actions"
-            width={240}
+            width={320}
             allowSorting={false}
             allowFiltering={false}
             cellRender={({ data }: { data: BackendOrganization }) => (
@@ -304,40 +307,42 @@ export function OrganizationsPage() {
                 onMouseDown={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                <button
-                  type="button"
-                  className="text-link-button"
+                <Button
+                  text="Team"
+                  stylingMode="text"
+                  disabled={!canViewOrgMembers(data.id)}
                   onClick={(event) => {
-                    event.stopPropagation();
+                    event.event?.stopPropagation();
+                    navigate(`/organizations/${data.id}/members`);
+                  }}
+                />
+                <Button
+                  text="View"
+                  stylingMode="text"
+                  onClick={(event) => {
+                    event.event?.stopPropagation();
                     openOrganization(data, "view");
                   }}
-                >
-                  View
-                </button>
-
-                <button
-                  type="button"
-                  className="text-link-button"
+                />
+                <Button
+                  text="Edit"
+                  stylingMode="text"
+                  disabled={!canUpdateOrg(data.id)}
                   onClick={(event) => {
-                    event.stopPropagation();
+                    event.event?.stopPropagation();
                     openOrganization(data, "edit");
                   }}
-                  disabled={!canUpdate}
-                >
-                  Edit
-                </button>
-
-                <button
-                  type="button"
-                  className="text-link-button danger"
+                />
+                <Button
+                  text="Delete"
+                  stylingMode="text"
+                  elementAttr={{ class: "danger" }}
+                  disabled={!canDeleteOrg(data.id)}
                   onClick={(event) => {
-                    event.stopPropagation();
+                    event.event?.stopPropagation();
                     void handleDeleteFromGrid(data);
                   }}
-                  disabled={!canDelete}
-                >
-                  Delete
-                </button>
+                />
               </div>
             )}
           />
@@ -358,6 +363,7 @@ export function OrganizationsPage() {
             Name
             <TextBox
               value={createForm.name}
+              maxLength={200}
               onValueChanged={(event) => {
                 const value = String(event.value ?? "");
                 setCreateForm((prev) => ({
@@ -373,6 +379,7 @@ export function OrganizationsPage() {
             Slug
             <TextBox
               value={createForm.slug}
+              maxLength={200}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({
                   ...prev,
@@ -386,6 +393,7 @@ export function OrganizationsPage() {
             Description
             <TextArea
               value={createForm.description}
+              maxLength={1000}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({
                   ...prev,
@@ -423,6 +431,7 @@ export function OrganizationsPage() {
               Name
               <TextBox
                 value={editForm.name}
+                maxLength={200}
                 readOnly={popupMode === "view"}
                 onValueChanged={(event) =>
                   setEditForm((prev) => ({
@@ -437,6 +446,7 @@ export function OrganizationsPage() {
               Slug
               <TextBox
                 value={editForm.slug}
+                maxLength={200}
                 readOnly={popupMode === "view"}
                 onValueChanged={(event) =>
                   setEditForm((prev) => ({
@@ -451,6 +461,7 @@ export function OrganizationsPage() {
               Description
               <TextArea
                 value={editForm.description}
+                maxLength={1000}
                 readOnly={popupMode === "view"}
                 onValueChanged={(event) =>
                   setEditForm((prev) => ({
@@ -476,17 +487,28 @@ export function OrganizationsPage() {
                   <Button
                     text="Save"
                     type="default"
-                    disabled={!canUpdate}
+                    disabled={!canUpdateOrg(selectedOrganization.id)}
                     onClick={() => void handleSave()}
                   />
                 </>
               ) : (
-                // view mode
-                <Button
-                  text="Close"
-                  stylingMode="outlined"
-                  onClick={closeDetailsPopup}
-                />
+                <>
+                  {canViewOrgMembers(selectedOrganization.id) && (
+                    <Button
+                      text="Manage Team"
+                      stylingMode="outlined"
+                      onClick={() => {
+                        closeDetailsPopup();
+                        navigate(`/organizations/${selectedOrganization.id}/members`);
+                      }}
+                    />
+                  )}
+                  <Button
+                    text="Close"
+                    stylingMode="outlined"
+                    onClick={closeDetailsPopup}
+                  />
+                </>
               )}
             </div>
           </div>

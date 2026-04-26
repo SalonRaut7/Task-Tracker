@@ -41,6 +41,14 @@ export const AppPermissions = {
   CommentsAdd: "Comments.Add",
   CommentsUpdate: "Comments.Update",
   CommentsDelete: "Comments.Delete",
+
+  InvitationsCreate: "Invitations.Create",
+  InvitationsView: "Invitations.View",
+  InvitationsRevoke: "Invitations.Revoke",
+
+  MembersView: "Members.View",
+  MembersUpdateRole: "Members.UpdateRole",
+  MembersRemove: "Members.Remove",
 } as const;
 
 export type AppPermission = (typeof AppPermissions)[keyof typeof AppPermissions];
@@ -52,116 +60,19 @@ export function isAppPermission(value: string): value is AppPermission {
   return permissionSet.has(value);
 }
 
-export function getPermissionsForRole(role: string): AppPermission[] {
-  switch (role) {
-    case AppRoles.SuperAdmin:
-      return allPermissions;
+/** Organization-scoped roles available for invite. */
+export const organizationRoleOptions = [
+  AppRoles.OrgAdmin,
+  AppRoles.ProjectManager,
+  AppRoles.Developer,
+  AppRoles.QA,
+  AppRoles.Viewer,
+];
 
-    case AppRoles.OrgAdmin:
-      return [
-        AppPermissions.UsersView,
-        AppPermissions.UsersManage,
-        AppPermissions.OrganizationsView,
-        AppPermissions.OrganizationsCreate,
-        AppPermissions.OrganizationsUpdate,
-        AppPermissions.OrganizationsDelete,
-        AppPermissions.ProjectsView,
-        AppPermissions.ProjectsCreate,
-        AppPermissions.ProjectsUpdate,
-        AppPermissions.ProjectsDelete,
-        AppPermissions.TasksView,
-        AppPermissions.TasksCreate,
-        AppPermissions.TasksUpdate,
-        AppPermissions.TasksDelete,
-        AppPermissions.TasksAssign,
-        AppPermissions.TasksChangeStatus,
-        AppPermissions.SprintsView,
-        AppPermissions.SprintsCreate,
-        AppPermissions.SprintsManage,
-        AppPermissions.EpicsView,
-        AppPermissions.EpicsCreate,
-        AppPermissions.EpicsUpdate,
-        AppPermissions.EpicsDelete,
-        AppPermissions.CommentsView,
-        AppPermissions.CommentsAdd,
-        AppPermissions.CommentsUpdate,
-        AppPermissions.CommentsDelete,
-      ];
-
-    case AppRoles.ProjectManager:
-      return [
-        AppPermissions.UsersView,
-        AppPermissions.OrganizationsView,
-        AppPermissions.ProjectsView,
-        AppPermissions.ProjectsCreate,
-        AppPermissions.ProjectsUpdate,
-        AppPermissions.TasksView,
-        AppPermissions.TasksCreate,
-        AppPermissions.TasksUpdate,
-        AppPermissions.TasksDelete,
-        AppPermissions.TasksAssign,
-        AppPermissions.TasksChangeStatus,
-        AppPermissions.SprintsView,
-        AppPermissions.SprintsCreate,
-        AppPermissions.SprintsManage,
-        AppPermissions.EpicsView,
-        AppPermissions.EpicsCreate,
-        AppPermissions.EpicsUpdate,
-        AppPermissions.EpicsDelete,
-        AppPermissions.CommentsView,
-        AppPermissions.CommentsAdd,
-        AppPermissions.CommentsUpdate,
-        AppPermissions.CommentsDelete,
-      ];
-
-    case AppRoles.Developer:
-      return [
-        AppPermissions.ProjectsView,
-        AppPermissions.TasksView,
-        AppPermissions.TasksCreate,
-        AppPermissions.TasksUpdate,
-        AppPermissions.TasksChangeStatus,
-        AppPermissions.SprintsView,
-        AppPermissions.EpicsView,
-        AppPermissions.CommentsView,
-        AppPermissions.CommentsAdd,
-        AppPermissions.CommentsUpdate,
-      ];
-
-    case AppRoles.QA:
-      return [
-        AppPermissions.ProjectsView,
-        AppPermissions.TasksView,
-        AppPermissions.TasksChangeStatus,
-        AppPermissions.SprintsView,
-        AppPermissions.EpicsView,
-        AppPermissions.CommentsView,
-        AppPermissions.CommentsAdd,
-      ];
-
-    case AppRoles.Viewer:
-      return [
-        AppPermissions.OrganizationsView,
-        AppPermissions.ProjectsView,
-        AppPermissions.TasksView,
-        AppPermissions.SprintsView,
-        AppPermissions.EpicsView,
-        AppPermissions.CommentsView,
-      ];
-
-    default:
-      return [];
-  }
-}
-
-export function getPermissionsForRoles(roles: readonly string[]): AppPermission[] {
-  const permissions = new Set<AppPermission>();
-
-  for (const role of roles) {
-    for (const permission of getPermissionsForRole(role)) {
-      permissions.add(permission);
-    }
-  }
-
-  return Array.from(permissions);
-}
+/** Project-scoped roles available for invite. */
+export const projectRoleOptions = [
+  AppRoles.ProjectManager,
+  AppRoles.Developer,
+  AppRoles.QA,
+  AppRoles.Viewer,
+];

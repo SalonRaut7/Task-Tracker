@@ -6,6 +6,7 @@ public sealed class DeleteSprintCommandValidator : AbstractValidator<DeleteSprin
 {
     public DeleteSprintCommandValidator()
     {
-        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.Id)
+            .NotEmpty().WithMessage("Sprint ID is required.");
     }
 }

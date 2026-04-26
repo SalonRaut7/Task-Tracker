@@ -7,7 +7,7 @@ import TextBox from "devextreme-react/text-box";
 import { Modal } from "../components/Modal";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
-import { ApiError } from "../services/apiClient";
+import { getErrorMessage } from "../utils/getErrorMessage";
 import { getOrganizations } from "../services/organizationService";
 import { createProject, deleteProject, updateProject } from "../services/projectService";
 import { AppPermissions } from "../security/permissions";
@@ -61,8 +61,6 @@ export function ProjectsPage() {
   const [deletingProject, setDeletingProject] = useState(false); // used for GRID delete only
 
   const canCreateProject = hasPermission(AppPermissions.ProjectsCreate);
-  const canUpdateProject = hasPermission(AppPermissions.ProjectsUpdate);
-  const canDeleteProject = hasPermission(AppPermissions.ProjectsDelete);
 
   const organizationNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -102,6 +100,18 @@ export function ProjectsPage() {
     return "Unknown organization";
   }, [editForm.organizationId, organizationNameById, loadingOrganizations]);
 
+  const canDeleteProjectInScope = (projectId: string): boolean => {
+    return hasPermission(AppPermissions.ProjectsDelete, "Project", projectId);
+  };
+
+  const canUpdateProjectInScope = (projectId: string): boolean => {
+    return hasPermission(AppPermissions.ProjectsUpdate, "Project", projectId);
+  };
+
+  const canViewMembersInScope = (projectId: string): boolean => {
+    return hasPermission(AppPermissions.MembersView, "Project", projectId);
+  };
+
   const emptyState =
     projectsApiAvailable && !loadingData && filteredProjects.length === 0;
 
@@ -125,12 +135,7 @@ export function ProjectsPage() {
         return { ...prev, organizationId: result[0].id };
       });
     } catch (error) {
-      const message =
-        error instanceof ApiError
-          ? error.message
-          : error instanceof Error
-          ? error.message
-          : "Failed to load organizations.";
+      const message = getErrorMessage(error, "Failed to load organizations.");
 
       if (showCreatePopup) {
         setCreateError(message);
@@ -204,9 +209,7 @@ export function ProjectsPage() {
       closeCreatePopup();
       await refreshWorkspaceData({ includeTasks: false });
     } catch (error) {
-      if (error instanceof ApiError) setCreateError(error.message);
-      else if (error instanceof Error) setCreateError(error.message);
-      else setCreateError("Failed to create project.");
+      setCreateError(getErrorMessage(error, "Failed to create project."));
     } finally {
       setSavingProject(false);
     }
@@ -238,7 +241,7 @@ export function ProjectsPage() {
   const handleUpdateProject = async () => {
     if (!selectedProject) return;
 
-    if (!canUpdateProject) {
+    if (!canUpdateProjectInScope(selectedProject.id)) {
       setEditError("You do not have permission to update projects.");
       return;
     }
@@ -271,16 +274,14 @@ export function ProjectsPage() {
       await refreshWorkspaceData({ includeTasks: false });
       closeEditPopup();
     } catch (error) {
-      if (error instanceof ApiError) setEditError(error.message);
-      else if (error instanceof Error) setEditError(error.message);
-      else setEditError("Failed to update project.");
+      setEditError(getErrorMessage(error, "Failed to update project."));
     } finally {
       setUpdatingProject(false);
     }
   };
 
   const handleDeleteProjectFromGrid = async (project: BackendProject) => {
-    if (!canDeleteProject) {
+    if (!canDeleteProjectInScope(project.id)) {
       setPageError("You do not have permission to delete projects.");
       return;
     }
@@ -296,9 +297,7 @@ export function ProjectsPage() {
       if (selectedProject?.id === project.id) closeEditPopup();
       await refreshWorkspaceData({ includeTasks: false });
     } catch (error) {
-      if (error instanceof ApiError) setPageError(error.message);
-      else if (error instanceof Error) setPageError(error.message);
-      else setPageError("Failed to delete project.");
+      setPageError(getErrorMessage(error, "Failed to delete project."));
     } finally {
       setDeletingProject(false);
     }
@@ -390,7 +389,7 @@ export function ProjectsPage() {
 
             <Column
               caption="Actions"
-              width={250}
+              width={320}
               allowSorting={false}
               allowFiltering={false}
               cellRender={({ data }: { data: BackendProject }) => (
@@ -410,9 +409,24 @@ export function ProjectsPage() {
                     }}
                   />
                   <Button
+                    text="Team"
+                    stylingMode="text"
+                    disabled={!canViewMembersInScope(data.id)}
+                    onClick={(event) => {
+                      event?.event?.preventDefault?.();
+                      event?.event?.stopPropagation?.();
+                      navigate(`/projects/${data.id}/members`);
+                    }}
+                  />
+                  <Button
                     text="Edit"
                     stylingMode="text"
-                    disabled={!canUpdateProject}
+                    disabled={!canUpdateProjectInScope(data.id)}
+                    hint={
+                      !canUpdateProjectInScope(data.id)
+                        ? "You do not have permission to update this project."
+                        : undefined
+                    }
                     onClick={(event) => {
                       event?.event?.preventDefault?.();
                       event?.event?.stopPropagation?.();
@@ -423,7 +437,12 @@ export function ProjectsPage() {
                     text="Delete"
                     type="danger"
                     stylingMode="text"
-                    disabled={!canDeleteProject || deletingProject}
+                    disabled={!canDeleteProjectInScope(data.id) || deletingProject}
+                    hint={
+                      !canDeleteProjectInScope(data.id)
+                        ? "You do not have permission to delete this project."
+                        : undefined
+                    }
                     onClick={(event) => {
                       event?.event?.preventDefault?.();
                       event?.event?.stopPropagation?.();
@@ -486,6 +505,7 @@ export function ProjectsPage() {
             Project Name
             <TextBox
               value={createForm.name}
+              maxLength={200}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({
                   ...prev,
@@ -515,6 +535,7 @@ export function ProjectsPage() {
             Description
             <TextArea
               value={createForm.description}
+              maxLength={2000}
               minHeight={90}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({
@@ -567,6 +588,7 @@ export function ProjectsPage() {
               Project Name
               <TextBox
                 value={editForm.name}
+                maxLength={200}
                 readOnly={projectPopupMode === "view"}
                 onValueChanged={(event) =>
                   setEditForm((prev) => ({
@@ -598,6 +620,7 @@ export function ProjectsPage() {
               Description
               <TextArea
                 value={editForm.description}
+                maxLength={2000}
                 minHeight={90}
                 readOnly={projectPopupMode === "view"}
                 onValueChanged={(event) =>
@@ -621,12 +644,24 @@ export function ProjectsPage() {
                   <Button
                     text={updatingProject ? "Saving..." : "Save"}
                     type="default"
-                    disabled={updatingProject || !canUpdateProject}
+                    disabled={updatingProject || !canUpdateProjectInScope(selectedProject.id)}
                     onClick={() => void handleUpdateProject()}
                   />
                 </>
               ) : (
-                <Button text="Close" stylingMode="outlined" onClick={closeEditPopup} />
+                <>
+                  {canViewMembersInScope(selectedProject.id) && (
+                    <Button
+                      text="Manage Team"
+                      stylingMode="outlined"
+                      onClick={() => {
+                        closeEditPopup();
+                        navigate(`/projects/${selectedProject.id}/members`);
+                      }}
+                    />
+                  )}
+                  <Button text="Close" stylingMode="outlined" onClick={closeEditPopup} />
+                </>
               )}
             </div>
           </div>

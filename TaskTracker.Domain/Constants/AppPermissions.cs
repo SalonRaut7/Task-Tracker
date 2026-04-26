@@ -1,7 +1,7 @@
 namespace TaskTracker.Domain.Constants;
 
 /// Defines all granular permissions and their role mappings.
-/// Used by the policy-based authorization system.
+/// Used by the dynamic permission evaluation system.
 public static class AppPermissions
 {
     // ── Users ────────────────────────────────────────────────
@@ -45,7 +45,17 @@ public static class AppPermissions
     public const string CommentsUpdate = "Comments.Update";
     public const string CommentsDelete = "Comments.Delete";
 
-    /// Returns every permission string defined in the system
+    // ── Invitations ──────────────────────────────────────────
+    public const string InvitationsCreate = "Invitations.Create";
+    public const string InvitationsView = "Invitations.View";
+    public const string InvitationsRevoke = "Invitations.Revoke";
+
+    // ── Members ──────────────────────────────────────────────
+    public const string MembersView = "Members.View";
+    public const string MembersUpdateRole = "Members.UpdateRole";
+    public const string MembersRemove = "Members.Remove";
+
+    /// Returns every permission string defined in the system.
     public static IReadOnlyList<string> GetAllPermissions() => new[]
     {
         UsersView, UsersManage,
@@ -54,11 +64,12 @@ public static class AppPermissions
         TasksView, TasksCreate, TasksUpdate, TasksDelete, TasksAssign, TasksChangeStatus,
         SprintsView, SprintsCreate, SprintsManage,
         EpicsView, EpicsCreate, EpicsUpdate, EpicsDelete,
-        CommentsView, CommentsAdd, CommentsUpdate, CommentsDelete
+        CommentsView, CommentsAdd, CommentsUpdate, CommentsDelete,
+        InvitationsCreate, InvitationsView, InvitationsRevoke,
+        MembersView, MembersUpdateRole, MembersRemove
     };
 
     /// Returns the permissions granted to a given role.
-    
     public static IReadOnlyList<string> GetPermissionsForRole(string role) => role switch
     {
         AppRoles.SuperAdmin => GetAllPermissions(),
@@ -71,7 +82,9 @@ public static class AppPermissions
             TasksView, TasksCreate, TasksUpdate, TasksDelete, TasksAssign, TasksChangeStatus,
             SprintsView, SprintsCreate, SprintsManage,
             EpicsView, EpicsCreate, EpicsUpdate, EpicsDelete,
-            CommentsView, CommentsAdd, CommentsUpdate, CommentsDelete
+            CommentsView, CommentsAdd, CommentsUpdate, CommentsDelete,
+            InvitationsCreate, InvitationsView, InvitationsRevoke,
+            MembersView, MembersUpdateRole, MembersRemove
         },
 
         AppRoles.ProjectManager => new[]
@@ -82,16 +95,19 @@ public static class AppPermissions
             TasksView, TasksCreate, TasksUpdate, TasksDelete, TasksAssign, TasksChangeStatus,
             SprintsView, SprintsCreate, SprintsManage,
             EpicsView, EpicsCreate, EpicsUpdate, EpicsDelete,
-            CommentsView, CommentsAdd, CommentsUpdate, CommentsDelete
+            CommentsView, CommentsAdd, CommentsUpdate, CommentsDelete,
+            InvitationsCreate, InvitationsView, InvitationsRevoke,
+            MembersView
         },
 
         AppRoles.Developer => new[]
         {
             ProjectsView,
-            TasksView, TasksCreate, TasksUpdate, TasksChangeStatus,
+            TasksView, TasksCreate, TasksUpdate, TasksDelete, TasksChangeStatus,
             SprintsView,
             EpicsView,
-            CommentsView, CommentsAdd, CommentsUpdate
+            CommentsView, CommentsAdd, CommentsUpdate, CommentsDelete,
+            MembersView
         },
 
         AppRoles.QA => new[]
@@ -100,7 +116,8 @@ public static class AppPermissions
             TasksView, TasksChangeStatus,
             SprintsView,
             EpicsView,
-            CommentsView, CommentsAdd
+            CommentsView, CommentsAdd,
+            MembersView
         },
 
         AppRoles.Viewer => new[]
@@ -110,7 +127,8 @@ public static class AppPermissions
             TasksView,
             SprintsView,
             EpicsView,
-            CommentsView
+            CommentsView,
+            MembersView
         },
 
         _ => Array.Empty<string>()

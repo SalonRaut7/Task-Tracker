@@ -53,14 +53,13 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
 
         storedToken.Revoke(newRefreshTokenHash);
 
-        // Get roles and permissions
-        var roles = await _userManager.GetRolesAsync(user);
-        var permissions = new List<string>();
-        foreach (var role in roles)
-            permissions.AddRange(AppPermissions.GetPermissionsForRole(role));
-        permissions = permissions.Distinct().ToList();
+        // Keep JWT/global role claims lean: only SuperAdmin is emitted.
+        var allRoles = await _userManager.GetRolesAsync(user);
+        var globalRoles = allRoles
+            .Where(r => string.Equals(r, AppRoles.SuperAdmin, StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
-        var newAccessToken = _tokenService.GenerateAccessToken(user, roles, permissions);
+        var newAccessToken = _tokenService.GenerateAccessToken(user, globalRoles);
 
 
         // Store new refresh token
@@ -83,8 +82,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
                 Email = user.Email!,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
-                Roles = roles,
-                Permissions = permissions
+                Roles = globalRoles
             }
         };
     }

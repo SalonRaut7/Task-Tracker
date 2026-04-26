@@ -7,7 +7,7 @@ import { useApp } from "../context/AppContext";
 type SettingsTab = "profile" | "roles" | "notifications" | "appearance";
 
 export function SettingsPage() {
-  const { user, theme, toggleTheme } = useApp();
+  const { user, userPermissions, theme, toggleTheme } = useApp();
   const [tab, setTab] = useState<SettingsTab>("profile");
 
   return (
@@ -72,16 +72,60 @@ export function SettingsPage() {
           {tab === "roles" && (
             <section className="card">
               <h2>Your Access</h2>
-              {user?.roles.length ? (
-                <div className="chip-row">
-                  {user.roles.map((role) => (
-                    <span key={role} className="role-chip">
-                      {role}
-                    </span>
-                  ))}
+              {userPermissions?.isSuperAdmin && (
+                <div style={{ marginBottom: "0.75rem" }}>
+                  <strong>Global</strong>
+                  <div className="chip-row" style={{ marginTop: "0.5rem" }}>
+                    <span className="role-chip">SuperAdmin</span>
+                  </div>
                 </div>
-              ) : (
-                <p className="page-subtitle">No roles provided in token payload.</p>
+              )}
+
+              {!!userPermissions?.organizationRoles.length && (
+                <div style={{ marginBottom: "0.75rem" }}>
+                  <strong>Organization Roles</strong>
+                  <div className="chip-row" style={{ marginTop: "0.5rem" }}>
+                    {userPermissions.organizationRoles.map((orgRole) => (
+                      <span
+                        key={`${orgRole.organizationId}-${orgRole.role}`}
+                        className="role-chip"
+                      >
+                        {orgRole.organizationName}: {orgRole.role}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!!userPermissions?.projectRoles.length && (
+                <div>
+                  <strong>Project Roles</strong>
+                  <div className="chip-row" style={{ marginTop: "0.5rem" }}>
+                    {userPermissions.projectRoles.map((projectRole) => (
+                      <span
+                        key={`${projectRole.projectId}-${projectRole.role}`}
+                        className="role-chip"
+                      >
+                        {projectRole.projectName}: {projectRole.role}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!userPermissions?.isSuperAdmin &&
+                !userPermissions?.organizationRoles.length &&
+                !userPermissions?.projectRoles.length &&
+                !user?.roles.length && (
+                  <p className="page-subtitle">
+                    No roles are currently assigned to your account.
+                  </p>
+                )}
+
+              {!userPermissions && (
+                <p className="page-subtitle">
+                  Loading scoped roles and permissions...
+                </p>
               )}
             </section>
           )}

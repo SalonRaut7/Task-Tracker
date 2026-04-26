@@ -6,9 +6,17 @@ public sealed class CreateEpicCommandValidator : AbstractValidator<CreateEpicCom
 {
     public CreateEpicCommandValidator()
     {
-        RuleFor(x => x.ProjectId).NotEmpty();
-        RuleFor(x => x.Title).NotEmpty().MaximumLength(500);
-        RuleFor(x => x.Description).MaximumLength(5000);
-        RuleFor(x => x.Status).IsInEnum();
+        RuleFor(x => x.ProjectId)
+            .NotEmpty().WithMessage("Project ID is required.");
+
+        RuleFor(x => x.Title)
+            .NotEmpty().WithMessage("Epic title is required.")
+            .MaximumLength(500).WithMessage("Epic title cannot exceed 500 characters.");
+
+        RuleFor(x => x.Description)
+            .MaximumLength(5000).WithMessage("Description cannot exceed 5000 characters.");
+
+        RuleFor(x => x.Status)
+            .IsInEnum().WithMessage("Invalid epic status.");
     }
 }

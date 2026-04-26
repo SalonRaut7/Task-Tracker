@@ -1,8 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
-using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Epics.Queries.GetEpics;
@@ -11,16 +9,16 @@ public sealed class GetEpicsQueryHandler : IRequestHandler<GetEpicsQuery, IReadO
 {
     private readonly IEpicRepository _epicRepository;
     private readonly ICurrentUserService _currentUser;
-    private readonly IUserResourceAccessService _resourceAccessService;
+    private readonly IMembershipRepository _membershipRepository;
 
     public GetEpicsQueryHandler(
         IEpicRepository epicRepository,
         ICurrentUserService currentUser,
-        IUserResourceAccessService resourceAccessService)
+        IMembershipRepository membershipRepository)
     {
         _epicRepository = epicRepository;
         _currentUser = currentUser;
-        _resourceAccessService = resourceAccessService;
+        _membershipRepository = membershipRepository;
     }
 
     public async Task<IReadOnlyList<EpicDto>> Handle(GetEpicsQuery request, CancellationToken cancellationToken)
@@ -32,7 +30,7 @@ public sealed class GetEpicsQueryHandler : IRequestHandler<GetEpicsQuery, IReadO
             query = query.Where(epic => epic.ProjectId == request.ProjectId.Value);
         }
 
-        if (!_currentUser.Roles.Contains(AppRoles.SuperAdmin, StringComparer.OrdinalIgnoreCase))
+        if (!_currentUser.IsSuperAdmin)
         {
             var userId = _currentUser.UserId;
             if (string.IsNullOrWhiteSpace(userId))
@@ -40,7 +38,7 @@ public sealed class GetEpicsQueryHandler : IRequestHandler<GetEpicsQuery, IReadO
                 throw new UnauthorizedAccessException("Authentication is required.");
             }
 
-            var organizationIds = await _resourceAccessService.GetUserOrganizationIdsAsync(userId, cancellationToken);
+            var organizationIds = await _membershipRepository.GetUserOrganizationIdsAsync(userId, cancellationToken);
             if (organizationIds.Count == 0)
             {
                 return [];

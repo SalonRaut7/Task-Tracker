@@ -3,10 +3,17 @@ import { Button } from "devextreme-react/button";
 import TextBox from "devextreme-react/text-box";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
-import { ApiError } from "../services/apiClient";
+import { getErrorMessage } from "../utils/getErrorMessage";
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function sanitizeReturnUrl(value: string | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith("/")) return null;
+  if (value.startsWith("//")) return null;
+  return value;
 }
 
 export function LoginPage() {
@@ -20,6 +27,14 @@ export function LoginPage() {
   const [transitionLoading, setTransitionLoading] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const returnUrlFromQuery = sanitizeReturnUrl(
+    new URLSearchParams(location.search).get("returnUrl")
+  );
+  const returnUrlFromState = sanitizeReturnUrl(
+    (location.state as { from?: string } | null)?.from ?? null
+  );
+  const postLoginPath = returnUrlFromQuery ?? returnUrlFromState ?? "/dashboard";
 
   useEffect(() => {
     const shouldShowResetSuccess = Boolean(
@@ -51,7 +66,7 @@ export function LoginPage() {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={postLoginPath} replace />;
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -71,16 +86,10 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      await login(email, password);
-      navigate("/dashboard", { replace: true });
+      await login(email.trim(), password);
+      navigate(postLoginPath, { replace: true });
     } catch (requestError) {
-      if (requestError instanceof ApiError) {
-        setError(requestError.message);
-      } else if (requestError instanceof Error) {
-        setError(requestError.message);
-      } else {
-        setError("Unable to sign in right now. Please try again.");
-      }
+      setError(getErrorMessage(requestError, "Unable to sign in right now. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -110,6 +119,7 @@ export function LoginPage() {
             <TextBox
               mode="email"
               value={email}
+              maxLength={256}
               onValueChanged={(event) => setEmail(String(event.value))}
               placeholder="you@example.com"
               stylingMode="outlined"
@@ -122,6 +132,7 @@ export function LoginPage() {
               <TextBox
                 mode={showPassword ? "text" : "password"}
                 value={password}
+                maxLength={128}
                 onValueChanged={(event) => setPassword(String(event.value))}
                 placeholder="Your password"
                 stylingMode="outlined"

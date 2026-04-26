@@ -5,6 +5,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using TaskTracker.Application.Options;
+using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities.Identity;
 using TaskTracker.Domain.Interfaces;
 
@@ -19,7 +20,11 @@ public class TokenService : ITokenService
         _jwtOptions = jwtOptions.Value;
     }
 
-    public string GenerateAccessToken(ApplicationUser user, IList<string> roles, IList<string> permissions)
+    /// <summary>
+    /// Generates a lean JWT access token. Only includes identity claims and
+    /// global roles (SuperAdmin). No scoped roles or permissions in the token.
+    /// </summary>
+    public string GenerateAccessToken(ApplicationUser user, IList<string> roles)
     {
         var claims = new List<Claim>
         {
@@ -30,13 +35,9 @@ public class TokenService : ITokenService
             new("lastName", user.LastName),
         };
 
-        // Add role claims
+        // Add role claims (global roles only — typically just SuperAdmin)
         foreach (var role in roles)
             claims.Add(new Claim(ClaimTypes.Role, role));
-
-        // Add permission claims
-        foreach (var permission in permissions)
-            claims.Add(new Claim("Permission", permission));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtOptions.SecretKey));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -64,5 +65,4 @@ public class TokenService : ITokenService
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
         return Convert.ToBase64String(bytes);
     }
-
 }
