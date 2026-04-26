@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Infrastructure.Services;
@@ -19,13 +20,11 @@ public class CurrentUserService : ICurrentUserService
     public string? Email => User?.FindFirstValue(ClaimTypes.Email);
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated ?? false;
 
+    public bool IsSuperAdmin =>
+        Roles.Contains(AppRoles.SuperAdmin, StringComparer.OrdinalIgnoreCase);
+
     public IEnumerable<string> Roles =>
         User?.Claims
             .Where(c => c.Type == ClaimTypes.Role)
-            .Select(c => c.Value) ?? Enumerable.Empty<string>();
-
-    public IEnumerable<string> Permissions =>
-        User?.Claims
-            .Where(c => c.Type == "Permission")
             .Select(c => c.Value) ?? Enumerable.Empty<string>();
 }

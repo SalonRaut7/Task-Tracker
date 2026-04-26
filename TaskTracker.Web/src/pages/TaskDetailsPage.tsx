@@ -11,11 +11,13 @@ import {
   updateComment,
 } from "../services/commentService";
 import { getEpics } from "../services/epicService";
+import { getMembersByScope } from "../services/memberService";
 import { getSprints } from "../services/sprintService";
 import { getTaskById } from "../services/taskService";
-import { ApiError } from "../services/apiClient";
-import { AppPermissions } from "../security/permissions";
+import { getErrorMessage } from "../utils/getErrorMessage";
+import { AppPermissions, AppRoles } from "../security/permissions";
 import type { BackendComment, BackendEpic, BackendSprint } from "../types/app";
+import type { ScopeMember } from "../types/invitation";
 import type { TaskDto } from "../types/task";
 import { priorityLabel, statusLabel } from "../utils/taskPresentation";
 
@@ -30,7 +32,7 @@ function toDisplayDate(value: string | null | undefined): string {
 export function TaskDetailsPage() {
   const location = useLocation();
   const { projectId, taskId } = useParams();
-  const { tasks, projects, hasPermission, user } = useApp();
+  const { tasks, projects, hasPermission, user, userPermissions } = useApp();
 
   const canViewComments = hasPermission(AppPermissions.CommentsView);
   const canAddComment = hasPermission(AppPermissions.CommentsAdd);
@@ -43,6 +45,7 @@ export function TaskDetailsPage() {
 
   const [epics, setEpics] = useState<BackendEpic[]>([]);
   const [sprints, setSprints] = useState<BackendSprint[]>([]);
+  const [projectMembers, setProjectMembers] = useState<ScopeMember[]>([]);
 
   const [comments, setComments] = useState<BackendComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -90,35 +93,64 @@ export function TaskDetailsPage() {
     return map;
   }, [sprints]);
 
+  const memberInfoById = useMemo(() => {
+    const map = new Map<string, { name: string; role: string }>();
+    projectMembers.forEach((member) => {
+      map.set(member.userId, {
+        name: `${member.firstName} ${member.lastName}`.trim(),
+        role: member.role,
+      });
+    });
+    return map;
+  }, [projectMembers]);
+
+  const currentProjectRole = useMemo(() => {
+    if (!user?.id) {
+      return null;
+    }
+
+    return memberInfoById.get(user.id)?.role ?? null;
+  }, [memberInfoById, user?.id]);
+
   const orderedComments = useMemo(() => {
     return [...comments].sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }, [comments]);
 
+  const buildPersonDisplay = (userId: string, options?: { fallbackUnassigned?: boolean }) => {
+    if (!userId) {
+      return options?.fallbackUnassigned ? "Unassigned" : "-";
+    }
+
+    const member = memberInfoById.get(userId);
+    if (member) {
+      const youSuffix = userId === user?.id ? " (You)" : "";
+      return `${member.name} [${member.role}]${youSuffix}`;
+    }
+
+    if (userId === user?.id) {
+      return `${user.fullName} (You)`;
+    }
+
+    return `User ID: ${userId}`;
+  };
+
   const reporterDisplay = useMemo(() => {
     if (!task?.reporterId) {
       return "-";
     }
 
-    if (task.reporterId === user?.id) {
-      return `${user.fullName} (You)`;
-    }
-
-    return `User ID: ${task.reporterId}`;
-  }, [task?.reporterId, user?.id, user?.fullName]);
+    return buildPersonDisplay(task.reporterId);
+  }, [task?.reporterId, memberInfoById, user?.id, user?.fullName]);
 
   const assigneeDisplay = useMemo(() => {
     if (!task?.assigneeId) {
       return "Unassigned";
     }
 
-    if (task.assigneeId === user?.id) {
-      return `${user.fullName} (You)`;
-    }
-
-    return `User ID: ${task.assigneeId}`;
-  }, [task?.assigneeId, user?.id, user?.fullName]);
+    return buildPersonDisplay(task.assigneeId, { fallbackUnassigned: true });
+  }, [task?.assigneeId, memberInfoById, user?.id, user?.fullName]);
 
   useEffect(() => {
     if (!resolvedProjectId || !parsedTaskId) {
@@ -152,9 +184,7 @@ export function TaskDetailsPage() {
         }
       } catch (error) {
         if (!cancelled) {
-          if (error instanceof ApiError) {
-            setTaskError(error.message);
-          } else if (error instanceof Error) {
+          if (error instanceof Error) {
             setTaskError(error.message);
           } else {
             setTaskError("Failed to load task details.");
@@ -178,6 +208,7 @@ export function TaskDetailsPage() {
     if (!resolvedProjectId) {
       setEpics([]);
       setSprints([]);
+      setProjectMembers([]);
       return;
     }
 
@@ -185,19 +216,22 @@ export function TaskDetailsPage() {
 
     const loadLinks = async () => {
       try {
-        const [epicsResult, sprintsResult] = await Promise.all([
+        const [epicsResult, sprintsResult, membersResult] = await Promise.all([
           getEpics(resolvedProjectId),
           getSprints(resolvedProjectId),
+          getMembersByScope(1, resolvedProjectId),
         ]);
 
         if (!cancelled) {
           setEpics(epicsResult);
           setSprints(sprintsResult);
+          setProjectMembers(membersResult.members);
         }
       } catch {
         if (!cancelled) {
           setEpics([]);
           setSprints([]);
+          setProjectMembers([]);
         }
       }
     };
@@ -230,13 +264,7 @@ export function TaskDetailsPage() {
         }
       } catch (error) {
         if (!cancelled) {
-          if (error instanceof ApiError) {
-            setCommentsError(error.message);
-          } else if (error instanceof Error) {
-            setCommentsError(error.message);
-          } else {
-            setCommentsError("Failed to load comments.");
-          }
+          setCommentsError(getErrorMessage(error, "Failed to load comments."));
         }
       } finally {
         if (!cancelled) {
@@ -278,13 +306,7 @@ export function TaskDetailsPage() {
       setComments((prev) => [...prev, created]);
       setCommentDraft("");
     } catch (error) {
-      if (error instanceof ApiError) {
-        setCommentsError(error.message);
-      } else if (error instanceof Error) {
-        setCommentsError(error.message);
-      } else {
-        setCommentsError("Failed to create comment.");
-      }
+      setCommentsError(getErrorMessage(error, "Failed to create comment."));
     } finally {
       setCommentActionLoading(false);
     }
@@ -303,8 +325,15 @@ export function TaskDetailsPage() {
   };
 
   const handleUpdateComment = async (commentId: string) => {
+    const targetComment = comments.find((item) => item.id === commentId);
+
     if (!canUpdateComment) {
       setCommentsError("You do not have permission to update comments.");
+      return;
+    }
+
+    if (targetComment && !canModerateComment(targetComment)) {
+      setCommentsError("You do not have permission to edit this comment.");
       return;
     }
 
@@ -327,13 +356,7 @@ export function TaskDetailsPage() {
       setEditingCommentId(null);
       setEditingCommentContent("");
     } catch (error) {
-      if (error instanceof ApiError) {
-        setCommentsError(error.message);
-      } else if (error instanceof Error) {
-        setCommentsError(error.message);
-      } else {
-        setCommentsError("Failed to update comment.");
-      }
+      setCommentsError(getErrorMessage(error, "Failed to update comment."));
     } finally {
       setCommentActionLoading(false);
     }
@@ -342,6 +365,11 @@ export function TaskDetailsPage() {
   const handleDeleteComment = async (comment: BackendComment) => {
     if (!canDeleteComment) {
       setCommentsError("You do not have permission to delete comments.");
+      return;
+    }
+
+    if (!canModerateComment(comment)) {
+      setCommentsError("You do not have permission to delete this comment.");
       return;
     }
 
@@ -361,13 +389,7 @@ export function TaskDetailsPage() {
         cancelEditingComment();
       }
     } catch (error) {
-      if (error instanceof ApiError) {
-        setCommentsError(error.message);
-      } else if (error instanceof Error) {
-        setCommentsError(error.message);
-      } else {
-        setCommentsError("Failed to delete comment.");
-      }
+      setCommentsError(getErrorMessage(error, "Failed to delete comment."));
     } finally {
       setCommentActionLoading(false);
     }
@@ -381,6 +403,39 @@ export function TaskDetailsPage() {
         <Link to="/tasks">Back to tasks</Link>
       </div>
     );
+  }
+
+  function canModerateComment(comment: BackendComment): boolean {
+    if (!user?.id) {
+      return false;
+    }
+
+    if (userPermissions?.isSuperAdmin) {
+      return true;
+    }
+
+    if (comment.authorId === user.id) {
+      return true;
+    }
+
+    const authorRole = memberInfoById.get(comment.authorId)?.role ?? null;
+
+    if (!currentProjectRole) {
+      return false;
+    }
+
+    if (currentProjectRole === AppRoles.OrgAdmin) {
+      return true;
+    }
+
+    if (currentProjectRole === AppRoles.ProjectManager) {
+      return (
+        authorRole !== AppRoles.ProjectManager &&
+        authorRole !== AppRoles.OrgAdmin
+      );
+    }
+
+    return false;
   }
 
   return (
@@ -518,6 +573,7 @@ export function TaskDetailsPage() {
                         <>
                           <TextArea
                             value={editingCommentContent}
+                            maxLength={5000}
                             minHeight={80}
                             onValueChanged={(event) =>
                               setEditingCommentContent(String(event.value ?? ""))
@@ -542,7 +598,7 @@ export function TaskDetailsPage() {
                         <>
                           <p>{comment.content}</p>
                           <div className="inline-actions task-comment-actions">
-                            {canUpdateComment && (
+                            {canUpdateComment && canModerateComment(comment) && (
                               <Button
                                 text="Edit"
                                 stylingMode="text"
@@ -550,7 +606,7 @@ export function TaskDetailsPage() {
                                 disabled={commentActionLoading}
                               />
                             )}
-                            {canDeleteComment && (
+                            {canDeleteComment && canModerateComment(comment) && (
                               <Button
                                 text="Delete"
                                 type="danger"
@@ -570,6 +626,7 @@ export function TaskDetailsPage() {
                   <div className="task-comment-compose">
                     <TextArea
                       value={commentDraft}
+                      maxLength={5000}
                       minHeight={80}
                       placeholder="Write a comment..."
                       onValueChanged={(event) =>

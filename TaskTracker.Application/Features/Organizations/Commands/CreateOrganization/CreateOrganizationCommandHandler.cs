@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
 
@@ -8,10 +9,14 @@ namespace TaskTracker.Application.Features.Organizations.Commands.CreateOrganiza
 public sealed class CreateOrganizationCommandHandler : IRequestHandler<CreateOrganizationCommand, OrganizationDto>
 {
     private readonly IOrganizationRepository _organizationRepository;
+    private readonly ICurrentUserService _currentUser;
 
-    public CreateOrganizationCommandHandler(IOrganizationRepository organizationRepository)
+    public CreateOrganizationCommandHandler(
+        IOrganizationRepository organizationRepository,
+        ICurrentUserService currentUser)
     {
         _organizationRepository = organizationRepository;
+        _currentUser = currentUser;
     }
 
     public async Task<OrganizationDto> Handle(CreateOrganizationCommand request, CancellationToken cancellationToken)
@@ -26,6 +31,19 @@ public sealed class CreateOrganizationCommandHandler : IRequestHandler<CreateOrg
             CreatedAt = now,
             UpdatedAt = now
         };
+
+        // Auto-assign creator as OrgAdmin — ensures immediate ownership
+        if (!string.IsNullOrWhiteSpace(_currentUser.UserId))
+        {
+            organization.UserMemberships.Add(new UserOrganization
+            {
+                UserId = _currentUser.UserId,
+                OrganizationId = organization.Id,
+                Role = AppRoles.OrgAdmin,
+                JoinedAt = now,
+                UpdatedAt = now
+            });
+        }
 
         await _organizationRepository.AddAsync(organization, cancellationToken);
 

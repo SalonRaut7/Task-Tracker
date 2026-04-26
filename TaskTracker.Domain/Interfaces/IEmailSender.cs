@@ -1,7 +1,8 @@
 using TaskTracker.Domain.Enums;
 
 namespace TaskTracker.Domain.Interfaces;
-/// Sends transactional emails (OTP, password reset, etc.).
+
+/// Sends transactional emails (OTP, password reset, invitations, etc.).
 public interface IEmailSender
 {
     /// <summary>Sends an OTP code to the user's email.</summary>
@@ -9,4 +10,13 @@ public interface IEmailSender
 
     /// <summary>Sends a password reset link/token to the user's email.</summary>
     Task SendPasswordResetAsync(string toEmail, string resetToken, CancellationToken cancellationToken = default);
+
+    /// <summary>Sends an invitation email to join a scope with a specific role.</summary>
+    Task SendInviteAsync(
+        string toEmail,
+        string inviterName,
+        string scopeName,
+        string role,
+        string inviteLink,
+        CancellationToken cancellationToken = default);
 }

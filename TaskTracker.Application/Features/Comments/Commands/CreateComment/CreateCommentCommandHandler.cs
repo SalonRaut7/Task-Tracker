@@ -1,7 +1,5 @@
 using MediatR;
-using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
-using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
 
@@ -11,16 +9,13 @@ public sealed class CreateCommentCommandHandler : IRequestHandler<CreateCommentC
 {
     private readonly ICommentRepository _commentRepository;
     private readonly ICurrentUserService _currentUser;
-    private readonly IUserResourceAccessService _resourceAccessService;
 
     public CreateCommentCommandHandler(
         ICommentRepository commentRepository,
-        ICurrentUserService currentUser,
-        IUserResourceAccessService resourceAccessService)
+        ICurrentUserService currentUser)
     {
         _commentRepository = commentRepository;
         _currentUser = currentUser;
-        _resourceAccessService = resourceAccessService;
     }
 
     public async Task<CommentDto> Handle(CreateCommentCommand request, CancellationToken cancellationToken)
@@ -37,14 +32,8 @@ public sealed class CreateCommentCommandHandler : IRequestHandler<CreateCommentC
             throw new KeyNotFoundException($"Task '{request.TaskId}' was not found.");
         }
 
-        if (!_currentUser.Roles.Contains(AppRoles.SuperAdmin, StringComparer.OrdinalIgnoreCase))
-        {
-            var canAccessTask = await _resourceAccessService.CanAccessTaskAsync(userId, request.TaskId, cancellationToken);
-            if (!canAccessTask)
-            {
-                throw new ForbiddenAccessException($"No access to task '{request.TaskId}'.");
-            }
-        }
+        // Resource-level access is enforced by AuthorizationBehavior via IAuthorizedRequest.
+        // No need for a redundant CanAccessTaskAsync check here.
 
         var now = DateTime.UtcNow;
         var comment = new Comment

@@ -13,6 +13,8 @@ import { SprintsSection } from "./project-details/SprintsSection";
 export function ProjectDetailsPage() {
   const { id } = useParams();
   const { hasPermission } = useApp();
+  const canViewProjectMembers =
+    !!id && hasPermission(AppPermissions.MembersView, "Project", id);
 
   const canCreateEpic = hasPermission(AppPermissions.EpicsCreate);
   const canUpdateEpic = hasPermission(AppPermissions.EpicsUpdate);
@@ -81,6 +83,13 @@ export function ProjectDetailsPage() {
         <Link to="/projects">Back to Projects</Link>
         <h1>{project.name}</h1>
         <p className="page-subtitle">Project operations are authorization-scoped to the project and organization.</p>
+        {canViewProjectMembers && (
+          <p>
+            <Link to={`/projects/${project.id}/members`}>
+              Manage members and invitations
+            </Link>
+          </p>
+        )}
       </section>
 
       {requestError && <div className="form-error">{requestError}</div>}

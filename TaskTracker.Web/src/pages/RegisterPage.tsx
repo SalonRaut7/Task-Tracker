@@ -3,10 +3,14 @@ import { Button } from "devextreme-react/button";
 import TextBox from "devextreme-react/text-box";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
-import { ApiError } from "../services/apiClient";
+import { getErrorMessage } from "../utils/getErrorMessage";
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isValidPersonName(value: string): boolean {
+  return /^[A-Za-z][A-Za-z\s'-]*$/.test(value);
 }
 
 function validatePassword(password: string): string | null {
@@ -83,6 +87,11 @@ export function RegisterPage() {
       return;
     }
 
+    if (!isValidPersonName(firstName.trim())) {
+      setError("First name can contain letters, spaces, apostrophes, and hyphens only.");
+      return;
+    }
+
     if (!lastName.trim()) {
       setError("Last name is required.");
       return;
@@ -90,6 +99,11 @@ export function RegisterPage() {
 
     if (lastName.trim().length > 100) {
       setError("Last name must be 100 characters or less.");
+      return;
+    }
+
+    if (!isValidPersonName(lastName.trim())) {
+      setError("Last name can contain letters, spaces, apostrophes, and hyphens only.");
       return;
     }
 
@@ -123,13 +137,7 @@ export function RegisterPage() {
       setStep("verify");
       setResendCooldownSeconds(RESEND_COOLDOWN_SECONDS);
     } catch (requestError) {
-      if (requestError instanceof ApiError) {
-        setError(requestError.message);
-      } else if (requestError instanceof Error) {
-        setError(requestError.message);
-      } else {
-        setError("Registration failed. Please try again.");
-      }
+      setError(getErrorMessage(requestError, "Registration failed. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -147,18 +155,13 @@ export function RegisterPage() {
 
     setLoading(true);
     try {
-      const response = await verifyEmail(email, otpCode.trim());
+      const trimmedEmail = email.trim();
+      const response = await verifyEmail(trimmedEmail, otpCode.trim());
       setInfo(response.message);
-      await login(email, password);
+      await login(trimmedEmail, password);
       navigate("/dashboard", { replace: true });
     } catch (requestError) {
-      if (requestError instanceof ApiError) {
-        setError(requestError.message);
-      } else if (requestError instanceof Error) {
-        setError(requestError.message);
-      } else {
-        setError("Verification failed. Please try again.");
-      }
+      setError(getErrorMessage(requestError, "Verification failed. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -178,13 +181,7 @@ export function RegisterPage() {
       setInfo(message);
       setResendCooldownSeconds(RESEND_COOLDOWN_SECONDS);
     } catch (requestError) {
-      if (requestError instanceof ApiError) {
-        setError(requestError.message);
-      } else if (requestError instanceof Error) {
-        setError(requestError.message);
-      } else {
-        setError("Unable to resend OTP right now.");
-      }
+      setError(getErrorMessage(requestError, "Unable to resend OTP right now."));
     } finally {
       setResendLoading(false);
     }
@@ -224,6 +221,7 @@ export function RegisterPage() {
                   First name
                   <TextBox
                     value={firstName}
+                    maxLength={100}
                     onValueChanged={(event) => setFirstName(String(event.value))}
                     placeholder="Jane"
                     stylingMode="outlined"
@@ -234,6 +232,7 @@ export function RegisterPage() {
                   Last name
                   <TextBox
                     value={lastName}
+                    maxLength={100}
                     onValueChanged={(event) => setLastName(String(event.value))}
                     placeholder="Doe"
                     stylingMode="outlined"
@@ -246,6 +245,7 @@ export function RegisterPage() {
                 <TextBox
                   mode="email"
                   value={email}
+                  maxLength={256}
                   onValueChanged={(event) => setEmail(String(event.value))}
                   placeholder="you@example.com"
                   stylingMode="outlined"
@@ -258,6 +258,7 @@ export function RegisterPage() {
                   <TextBox
                     mode={showPassword ? "text" : "password"}
                     value={password}
+                    maxLength={128}
                     onValueChanged={(event) => setPassword(String(event.value))}
                     placeholder="8+ chars, upper/lower/number/symbol"
                     stylingMode="outlined"
@@ -279,6 +280,7 @@ export function RegisterPage() {
                   <TextBox
                     mode={showConfirmPassword ? "text" : "password"}
                     value={confirmPassword}
+                    maxLength={128}
                     onValueChanged={(event) => setConfirmPassword(String(event.value))}
                     placeholder="Repeat password"
                     stylingMode="outlined"
@@ -301,6 +303,7 @@ export function RegisterPage() {
               Verification code
               <TextBox
                 value={otpCode}
+                maxLength={6}
                 onValueChanged={(event) => setOtpCode(String(event.value ?? ""))}
                 placeholder="6-digit code"
                 stylingMode="outlined"

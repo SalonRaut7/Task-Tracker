@@ -16,7 +16,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     // ── Identity extensions ───────────────────────────────────
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<OtpEntry> OtpEntries => Set<OtpEntry>();
-    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
 
     // ── Domain entities ───────────────────────────────────────
     public DbSet<Organization> Organizations => Set<Organization>();
@@ -26,6 +25,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<UserOrganization> UserOrganizations => Set<UserOrganization>();
     public DbSet<UserProject> UserProjects => Set<UserProject>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

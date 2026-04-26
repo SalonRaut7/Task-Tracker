@@ -38,6 +38,8 @@ builder.Services.Configure<TaskDateRulesOptions>(
     builder.Configuration.GetSection(TaskDateRulesOptions.SectionName));
 builder.Services.Configure<AdminSeedOptions>(
     builder.Configuration.GetSection(AdminSeedOptions.SectionName));
+builder.Services.Configure<InviteOptions>(
+    builder.Configuration.GetSection(InviteOptions.SectionName));
 
 // ── Infrastructure (Identity, JWT services, Email, OTP) ──────────
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -67,7 +69,7 @@ builder.Services.AddAuthentication(options =>
 
 // ── Authorization (Permission-based policies) ────────────────────
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
-builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
 
 // ── MediatR + FluentValidation ───────────────────────────────────
 builder.Services.AddMediatR(typeof(CreateTaskCommand).Assembly);
@@ -109,11 +111,10 @@ using (var scope = app.Services.CreateScope())
     {
         var roleManager = services.GetRequiredService<Microsoft.AspNetCore.Identity.RoleManager<ApplicationRole>>();
         var userManager = services.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<ApplicationUser>>();
-        var dbContext = services.GetRequiredService<AppDbContext>();
         var adminSeedOptions = services.GetRequiredService<IOptions<AdminSeedOptions>>().Value;
         var logger = services.GetRequiredService<ILogger<Program>>();
 
-        await IdentitySeeder.SeedAsync(roleManager, userManager, dbContext, adminSeedOptions, logger);
+        await IdentitySeeder.SeedAsync(roleManager, userManager, adminSeedOptions, logger);
     }
     catch (Exception ex)
     {

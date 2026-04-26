@@ -6,9 +6,20 @@ public sealed class UpdateProjectCommandValidator : AbstractValidator<UpdateProj
 {
     public UpdateProjectCommandValidator()
     {
-        RuleFor(x => x.Id).NotEmpty();
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Key).NotEmpty().MaximumLength(10);
-        RuleFor(x => x.Description).MaximumLength(2000);
+        RuleFor(x => x.Id)
+            .NotEmpty().WithMessage("Project ID is required.");
+
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Project name is required.")
+            .MaximumLength(200).WithMessage("Project name cannot exceed 200 characters.");
+
+        RuleFor(x => x.Key)
+            .NotEmpty().WithMessage("Project key is required.")
+            .MaximumLength(10).WithMessage("Project key cannot exceed 10 characters.")
+            .Matches(@"^[A-Z0-9_-]+$")
+            .WithMessage("Project key must contain only uppercase letters, numbers, hyphens, and underscores.");
+
+        RuleFor(x => x.Description)
+            .MaximumLength(2000).WithMessage("Description cannot exceed 2000 characters.");
     }
 }

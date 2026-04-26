@@ -6,6 +6,8 @@ public sealed class GetCommentsQueryValidator : AbstractValidator<GetCommentsQue
 {
     public GetCommentsQueryValidator()
     {
-        RuleFor(x => x.TaskId).GreaterThan(0).When(x => x.TaskId.HasValue);
+        RuleFor(x => x.TaskId)
+            .GreaterThan(0).WithMessage("Task ID must be greater than 0.")
+            .When(x => x.TaskId.HasValue);
     }
 }

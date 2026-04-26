@@ -73,6 +73,7 @@ public class ExceptionHandlingMiddleware
                 title: "The request could not be processed.",
                 exception: ex,
                 logLevel: LogLevel.Warning);
+            // The exception message is user-facing for validation/business-rule failures.
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -137,7 +138,9 @@ public class ExceptionHandlingMiddleware
         {
             Status = statusCode,
             Title = title,
-            Detail = includeExceptionMessage ? exception.Message : null,
+            Detail = includeExceptionMessage || exception is InvalidOperationException
+                ? exception.Message
+                : null,
             Instance = context.Request.Path
         };
 

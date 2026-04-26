@@ -14,6 +14,8 @@ import { TasksPage } from "./pages/TasksPage";
 import { ForbiddenPage } from "./pages/ForbiddenPage";
 import { OrganizationsPage } from "./pages/OrganizationsPage";
 import { CommentsPage } from "./pages/CommentsPage";
+import MembersPage from "./pages/MembersPage";
+import AcceptInvitePage from "./pages/AcceptInvitePage";
 import { RequirePermission } from "./security/RequirePermission";
 import { AppPermissions } from "./security/permissions";
 
@@ -36,6 +38,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/invitations/accept" element={<AcceptInvitePage />} />
 
           <Route element={<MainLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
@@ -104,6 +107,22 @@ export default function App() {
               }
             />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route
+              path="/organizations/:orgId/members"
+              element={
+                <RequirePermission permission={AppPermissions.MembersView}>
+                  <MembersPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="/projects/:projectId/members"
+              element={
+                <RequirePermission permission={AppPermissions.MembersView}>
+                  <MembersPage />
+                </RequirePermission>
+              }
+            />
             <Route path="/forbidden" element={<ForbiddenPage />} />
           </Route>
 

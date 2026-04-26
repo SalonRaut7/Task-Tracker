@@ -6,6 +6,7 @@ public sealed class GetOrganizationByIdQueryValidator : AbstractValidator<GetOrg
 {
     public GetOrganizationByIdQueryValidator()
     {
-        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.Id)
+            .NotEmpty().WithMessage("Organization ID is required.");
     }
 }

@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
         services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
+        services.Configure<InviteOptions>(configuration.GetSection(InviteOptions.SectionName));
 
         // ── ASP.NET Identity ─────────────────────────────────────
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -51,17 +52,19 @@ public static class DependencyInjection
         services.AddScoped<IOtpService, OtpService>();
         services.AddScoped<IEmailSender, EmailSender>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
-        services.AddScoped<IUserResourceAccessService, UserResourceAccessService>();
+        services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+
+        // ── Repositories ─────────────────────────────────────────
         services.AddScoped<ITaskRepository, TaskRepository>();
         services.AddScoped<IOrganizationRepository, OrganizationRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IEpicRepository, EpicRepository>();
         services.AddScoped<ISprintRepository, SprintRepository>();
         services.AddScoped<ICommentRepository, CommentRepository>();
-
-        // ── Repositories ─────────────────────────────────────────
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IOtpRepository, OtpRepository>();
+        services.AddScoped<IInvitationRepository, InvitationRepository>();
+        services.AddScoped<IMembershipRepository, MembershipRepository>();
 
         return services;
     }

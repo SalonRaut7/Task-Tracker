@@ -9,11 +9,13 @@ import TextBox from "devextreme-react/text-box";
 import { useNavigate } from "react-router-dom";
 import { Modal } from "../components/Modal";
 import { useApp } from "../context/AppContext";
-import { ApiError } from "../services/apiClient";
+import { getErrorMessage } from "../utils/getErrorMessage";
 import { getEpics } from "../services/epicService";
+import { getMembersByScope } from "../services/memberService";
 import { getSprints } from "../services/sprintService";
 import { AppPermissions } from "../security/permissions";
 import type { BackendEpic, BackendSprint } from "../types/app";
+import type { ScopeMember } from "../types/invitation";
 import {
   Status,
   TaskPriority,
@@ -27,6 +29,7 @@ import {
   statusLabel,
   statusOptions,
 } from "../utils/taskPresentation";
+import { toDateOnly } from "../utils/toDateOnly";
 
 type ViewMode = "list" | "kanban";
 type TaskPopupMode = "view" | "edit" | null;
@@ -49,6 +52,11 @@ interface TaskForm {
   endDate: string;
 }
 
+interface AssigneeOption {
+  id: string;
+  label: string;
+}
+
 const boardColumns: Array<{ id: Status; label: string }> = [
   { id: Status.NotStarted, label: "Not Started" },
   { id: Status.InProgress, label: "In Progress" },
@@ -57,21 +65,7 @@ const boardColumns: Array<{ id: Status; label: string }> = [
   { id: Status.Cancelled, label: "Cancelled" },
 ];
 
-function toDateOnly(value: unknown): string {
-  if (!value) {
-    return "";
-  }
 
-  const date = new Date(value as string | number | Date);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function validateTaskForm(form: TaskForm): string | null {
   if (!form.projectId.trim()) {
@@ -168,7 +162,7 @@ function toTaskForm(task: TaskDto): TaskForm {
 
 export function TasksPage() {
   const navigate = useNavigate();
-  const { tasks, projects, loadingData, addTask, updateTask, deleteTask, hasPermission } = useApp();
+  const { tasks, projects, loadingData, addTask, updateTask, deleteTask, hasPermission, user } = useApp();
 
   const canCreate = hasPermission(AppPermissions.TasksCreate);
   const canUpdate = hasPermission(AppPermissions.TasksUpdate);
@@ -203,14 +197,18 @@ export function TasksPage() {
   const [editForm, setEditForm] = useState<TaskForm | null>(null);
   const [createEpics, setCreateEpics] = useState<BackendEpic[]>([]);
   const [createSprints, setCreateSprints] = useState<BackendSprint[]>([]);
+  const [createAssignableMembers, setCreateAssignableMembers] = useState<ScopeMember[]>([]);
   const [editEpics, setEditEpics] = useState<BackendEpic[]>([]);
   const [editSprints, setEditSprints] = useState<BackendSprint[]>([]);
+  const [editAssignableMembers, setEditAssignableMembers] = useState<ScopeMember[]>([]);
   const projectLinksCacheRef = useRef<
     Record<string, { epics: BackendEpic[]; sprints: BackendSprint[] }>
   >({});
   const projectLinksInflightRef = useRef<
     Record<string, Promise<{ epics: BackendEpic[]; sprints: BackendSprint[] }>>
   >({});
+  const projectMembersCacheRef = useRef<Record<string, ScopeMember[]>>({});
+  const projectMembersInflightRef = useRef<Record<string, Promise<ScopeMember[]>>>({});
   const suppressNextRowClickRef = useRef(false);
   const [viewport, setViewport] = useState(() => ({
     width: typeof window !== "undefined" ? window.innerWidth : 1366,
@@ -306,6 +304,54 @@ export function TasksPage() {
     []
   );
 
+  const toAssigneeLabel = (member: ScopeMember): string =>
+    `${member.firstName} ${member.lastName}`.trim() + ` (${member.role})`;
+
+  const createAssigneeOptions = useMemo<AssigneeOption[]>(() => {
+    let options = createAssignableMembers.map((member) => ({
+      id: member.userId,
+      label: toAssigneeLabel(member),
+    }));
+
+    if (user?.id && !options.some((o) => o.id === user.id)) {
+      options.push({ id: user.id, label: `${user.fullName} (Inherited)` });
+    }
+
+    if (!canAssign && user?.id) {
+      options = options.filter((o) => o.id === user.id);
+    }
+    return options;
+  }, [createAssignableMembers, canAssign, user]);
+
+  const editAssigneeOptions = useMemo<AssigneeOption[]>(() => {
+    let options = editAssignableMembers.map((member) => ({
+      id: member.userId,
+      label: toAssigneeLabel(member),
+    }));
+
+    if (user?.id && !options.some((o) => o.id === user.id)) {
+      options.push({ id: user.id, label: `${user.fullName} (Inherited)` });
+    }
+
+    const currentAssigneeId = editForm?.assigneeId?.trim();
+    if (!currentAssigneeId || options.some((option) => option.id === currentAssigneeId)) {
+      return options;
+    }
+
+    return [
+      { id: currentAssigneeId, label: `${currentAssigneeId} (not currently assignable)` },
+      ...options,
+    ];
+  }, [editAssignableMembers, editForm?.assigneeId, user]);
+
+  const editAssigneeLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    editAssigneeOptions.forEach((member) => {
+      map.set(member.id, member.label);
+    });
+    return map;
+  }, [editAssigneeOptions]);
+
   const loadProjectLinks = async (
     projectId: string,
     onEpics: (value: BackendEpic[]) => void,
@@ -348,6 +394,38 @@ export function TasksPage() {
     }
   };
 
+  const loadProjectAssignableMembers = async (
+    projectId: string,
+    onMembers: (value: ScopeMember[]) => void
+  ) => {
+    if (!projectId) {
+      onMembers([]);
+      return;
+    }
+
+    const cachedMembers = projectMembersCacheRef.current[projectId];
+    if (cachedMembers) {
+      onMembers(cachedMembers);
+      return;
+    }
+
+    let inflightRequest = projectMembersInflightRef.current[projectId];
+    if (!inflightRequest) {
+      inflightRequest = getMembersByScope(1, projectId).then((result) => result.members);
+      projectMembersInflightRef.current[projectId] = inflightRequest;
+    }
+
+    try {
+      const members = await inflightRequest;
+      projectMembersCacheRef.current[projectId] = members;
+      onMembers(members);
+    } catch {
+      onMembers([]);
+    } finally {
+      delete projectMembersInflightRef.current[projectId];
+    }
+  };
+
   useEffect(() => {
     if (projects.length === 0) {
       return;
@@ -367,20 +445,24 @@ export function TasksPage() {
 
   useEffect(() => {
     if (!showCreate || !createForm.projectId) {
+      setCreateAssignableMembers([]);
       return;
     }
 
     void loadProjectLinks(createForm.projectId, setCreateEpics, setCreateSprints);
+    void loadProjectAssignableMembers(createForm.projectId, setCreateAssignableMembers);
   }, [showCreate, createForm.projectId]);
 
   useEffect(() => {
     if (taskPopupMode !== "edit" || !editForm?.projectId) {
       setEditEpics([]);
       setEditSprints([]);
+      setEditAssignableMembers([]);
       return;
     }
 
     void loadProjectLinks(editForm.projectId, setEditEpics, setEditSprints);
+    void loadProjectAssignableMembers(editForm.projectId, setEditAssignableMembers);
   }, [taskPopupMode, editForm?.projectId]);
 
   useEffect(() => {
@@ -389,6 +471,7 @@ export function TasksPage() {
     }
 
     void loadProjectLinks(editForm.projectId, setEditEpics, setEditSprints);
+    void loadProjectAssignableMembers(editForm.projectId, setEditAssignableMembers);
   }, [selectedTask?.id, selectedTask?.projectId, editForm?.projectId]);
 
   const filteredTasks = useMemo(() => {
@@ -420,19 +503,7 @@ export function TasksPage() {
     return map;
   }, [projects]);
 
-  const setApiError = (error: unknown, fallback: string) => {
-    if (error instanceof ApiError) {
-      setRequestError(error.message);
-      return;
-    }
 
-    if (error instanceof Error) {
-      setRequestError(error.message);
-      return;
-    }
-
-    setRequestError(fallback);
-  };
 
   const handleCreateTask = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -466,7 +537,7 @@ export function TasksPage() {
       });
       setShowCreate(false);
     } catch (error) {
-      setApiError(error, "Failed to create task.");
+      setRequestError(getErrorMessage(error, "Failed to create task."));
     } finally {
       setRequestLoading(false);
     }
@@ -509,7 +580,7 @@ export function TasksPage() {
       await updateTask(selectedTask.id, selectedTask.projectId, toUpdateDto(editForm));
       closeTaskDetails();
     } catch (error) {
-      setApiError(error, "Failed to update task.");
+      setRequestError(getErrorMessage(error, "Failed to update task."));
     } finally {
       setRequestLoading(false);
     }
@@ -536,7 +607,7 @@ export function TasksPage() {
         setEditForm(null);
       }
     } catch (error) {
-      setApiError(error, "Failed to delete task.");
+      setRequestError(getErrorMessage(error, "Failed to delete task."));
     } finally {
       setRequestLoading(false);
     }
@@ -806,23 +877,40 @@ export function TasksPage() {
               {requestError && <div className="form-error">{requestError}</div>}
 
               <label>
-                Assignee Id
-                <TextBox
-                  value={editForm.assigneeId}
-                  placeholder="Optional user id"
-                  readOnly={taskPopupMode === "view" || !canAssign}
-                  onValueChanged={(event) =>
-                    setEditForm((prev) =>
-                      prev ? { ...prev, assigneeId: String(event.value ?? "") } : prev
-                    )
-                  }
-                />
+                Assignee
+                {taskPopupMode === "edit" ? (
+                  <SelectBox
+                    dataSource={editAssigneeOptions}
+                    displayExpr="label"
+                    valueExpr="id"
+                    value={editForm.assigneeId || null}
+                    readOnly={!canAssign}
+                    showClearButton={canAssign}
+                    placeholder={canAssign ? "Select assignee (optional)" : "No assign permission"}
+                    dropDownOptions={selectBoxDropDownOptions}
+                    onValueChanged={(event) =>
+                      setEditForm((prev) =>
+                        prev ? { ...prev, assigneeId: String(event.value ?? "") } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox
+                    value={
+                      editForm.assigneeId
+                        ? editAssigneeLabelById.get(editForm.assigneeId) ?? editForm.assigneeId
+                        : "Unassigned"
+                    }
+                    readOnly
+                  />
+                )}
               </label>
 
               <label>
                 Title
                 <TextBox
                   value={editForm.title}
+                  maxLength={100}
                   readOnly={taskPopupMode === "view"}
                   onValueChanged={(event) =>
                     setEditForm((prev) =>
@@ -836,6 +924,7 @@ export function TasksPage() {
                 Description
                 <TextArea
                   value={editForm.description}
+                  maxLength={500}
                   readOnly={taskPopupMode === "view"}
                   onValueChanged={(event) =>
                     setEditForm((prev) =>
@@ -866,6 +955,7 @@ export function TasksPage() {
                               projectId: String(event.value ?? ""),
                               epicId: "",
                               sprintId: "",
+                              assigneeId: "",
                             }
                           : prev
                       )
@@ -1064,6 +1154,7 @@ export function TasksPage() {
                   projectId: String(event.value ?? ""),
                   epicId: "",
                   sprintId: "",
+                  assigneeId: "",
                 }))
               }
               placeholder="Select project"
@@ -1113,11 +1204,15 @@ export function TasksPage() {
           )}
 
           <label>
-            Assignee Id
-            <TextBox
-              value={createForm.assigneeId}
-              placeholder="Optional user id"
-              disabled={!canAssign}
+            Assignee
+            <SelectBox
+              dataSource={createAssigneeOptions}
+              displayExpr="label"
+              valueExpr="id"
+              value={createForm.assigneeId || null}
+              showClearButton={true}
+              placeholder={canAssign ? "Select assignee (optional)" : "Select yourself (optional)"}
+              dropDownOptions={selectBoxDropDownOptions}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({
                   ...prev,
@@ -1131,6 +1226,7 @@ export function TasksPage() {
             Title
             <TextBox
               value={createForm.title}
+              maxLength={100}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({ ...prev, title: String(event.value ?? "") }))
               }
@@ -1141,6 +1237,7 @@ export function TasksPage() {
             Description
             <TextArea
               value={createForm.description}
+              maxLength={500}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({ ...prev, description: String(event.value ?? "") }))
               }

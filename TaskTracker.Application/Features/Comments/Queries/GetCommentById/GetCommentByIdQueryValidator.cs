@@ -6,6 +6,7 @@ public sealed class GetCommentByIdQueryValidator : AbstractValidator<GetCommentB
 {
     public GetCommentByIdQueryValidator()
     {
-        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.Id)
+            .NotEmpty().WithMessage("Comment ID is required.");
     }
 }

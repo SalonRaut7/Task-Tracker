@@ -7,7 +7,6 @@ export interface AppUser {
   lastName: string;
   fullName: string;
   roles: string[];
-  permissions: string[];
 }
 
 export interface AuthResponse {
@@ -20,7 +19,6 @@ export interface AuthResponse {
     firstName: string;
     lastName: string;
     roles: string[];
-    permissions: string[];
   };
 }
 

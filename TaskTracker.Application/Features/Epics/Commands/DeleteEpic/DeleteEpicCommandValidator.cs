@@ -6,6 +6,7 @@ public sealed class DeleteEpicCommandValidator : AbstractValidator<DeleteEpicCom
 {
     public DeleteEpicCommandValidator()
     {
-        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.Id)
+            .NotEmpty().WithMessage("Epic ID is required.");
     }
 }

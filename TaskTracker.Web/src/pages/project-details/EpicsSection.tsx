@@ -299,6 +299,7 @@ export function EpicsSection({
             Title
             <TextBox
               value={createForm.title}
+              maxLength={500}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({
                   ...prev,
@@ -312,6 +313,7 @@ export function EpicsSection({
             Description
             <TextArea
               value={createForm.description}
+              maxLength={5000}
               minHeight={90}
               onValueChanged={(event) =>
                 setCreateForm((prev) => ({
@@ -378,6 +380,7 @@ export function EpicsSection({
               Title
               <TextBox
                 value={editForm.title}
+                maxLength={500}
                 readOnly={popupMode === "view"}
                 onValueChanged={(event) =>
                   setEditForm((prev) => ({
@@ -392,6 +395,7 @@ export function EpicsSection({
               Description
               <TextArea
                 value={editForm.description}
+                maxLength={5000}
                 minHeight={90}
                 readOnly={popupMode === "view"}
                 onValueChanged={(event) =>
