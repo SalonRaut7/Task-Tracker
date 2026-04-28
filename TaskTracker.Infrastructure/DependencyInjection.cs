@@ -65,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<IOtpRepository, OtpRepository>();
         services.AddScoped<IInvitationRepository, InvitationRepository>();
         services.AddScoped<IMembershipRepository, MembershipRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
 
         return services;
     }

@@ -10,8 +10,14 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
     {
         builder.Property(u => u.FirstName).HasMaxLength(100).IsRequired();
         builder.Property(u => u.LastName).HasMaxLength(100).IsRequired();
+        builder.Property(u => u.IsArchived).HasDefaultValue(false).IsRequired();
+        builder.Property(u => u.ArchivedByUserId).HasMaxLength(450);
+        builder.Property(u => u.ArchiveReason).HasMaxLength(500);
         builder.Property(u => u.CreatedAt).IsRequired();
         builder.Property(u => u.UpdatedAt).IsRequired();
+
+        builder.HasIndex(u => u.IsArchived);
+        builder.HasIndex(u => u.ArchivedAtUtc);
 
         builder.HasMany(u => u.RefreshTokens)
                .WithOne(rt => rt.User)

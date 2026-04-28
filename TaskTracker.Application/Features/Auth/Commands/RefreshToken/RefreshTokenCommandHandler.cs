@@ -47,6 +47,9 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
         var user = await _userManager.FindByIdAsync(userId)
             ?? throw new InvalidOperationException("User not found.");
 
+        if (!user.IsActive || user.IsArchived)
+            throw new InvalidOperationException("Your account has been deactivated. Contact support.");
+
         // Rotate tokens — revoke old, generate new
         var newRefreshToken = _tokenService.GenerateRefreshToken();
         var newRefreshTokenHash = _tokenService.HashToken(newRefreshToken);

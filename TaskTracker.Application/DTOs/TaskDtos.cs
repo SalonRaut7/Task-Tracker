@@ -41,7 +41,18 @@ namespace TaskTracker.Application.DTOs
         public Guid? SprintId { get; set; }
         public string? AssigneeId { get; set; }
         public string ReporterId { get; set; } = string.Empty;
+        public TaskUserIdentityDto? AssigneeUser { get; set; }
+        public TaskUserIdentityDto? ReporterUser { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+    }
+
+    public class TaskUserIdentityDto
+    {
+        public string UserId { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string? Role { get; set; }
+        public bool IsActive { get; set; }
+        public bool IsArchived { get; set; }
     }
 }

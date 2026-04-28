@@ -24,6 +24,20 @@ const navigation = [
     requiredPermission: AppPermissions.TasksView,
   },
   {
+    name: "Users",
+    href: "/users",
+    icon: "group",
+    requiredPermission: AppPermissions.UsersView,
+    superAdminOnly: true,
+  },
+  {
+    name: "User Archive",
+    href: "/users/archive",
+    icon: "folder",
+    requiredPermission: AppPermissions.UsersManage,
+    superAdminOnly: true,
+  },
+  {
     name: "Reports",
     href: "/reports",
     icon: "chart",
@@ -35,13 +49,16 @@ const navigation = [
   href: string;
   icon: string;
   requiredPermission?: AppPermission;
+  superAdminOnly?: boolean;
 }>;
 
 export function Sidebar() {
-  const { sidebarCollapsed, toggleSidebar, hasPermission } = useApp();
+  const { sidebarCollapsed, toggleSidebar, hasPermission, userPermissions } = useApp();
 
   const visibleNavigation = navigation.filter(
-    (item) => !item.requiredPermission || hasPermission(item.requiredPermission)
+    (item) =>
+      (!item.requiredPermission || hasPermission(item.requiredPermission)) &&
+      (!item.superAdminOnly || !!userPermissions?.isSuperAdmin)
   );
 
   return (

@@ -124,6 +124,59 @@ export interface BackendComment {
   updatedAt: string;
 }
 
+export interface BackendUserSummary {
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  isSuperAdmin: boolean;
+  isActive: boolean;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  archivedAtUtc?: string;
+  archivedByUserId?: string;
+  archiveReason?: string;
+  organizationCount: number;
+  projectCount: number;
+  assignedTaskCount: number;
+  reportedTaskCount: number;
+}
+
+export interface BackendUserOrganizationSummary {
+  organizationId: string;
+  organizationName: string;
+  role: string;
+  joinedAt: string;
+}
+
+export interface BackendUserProjectSummary {
+  projectId: string;
+  projectName: string;
+  organizationId: string;
+  organizationName: string;
+  role: string;
+  joinedAt: string;
+}
+
+export interface BackendUserDetails {
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  isActive: boolean;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  archivedAtUtc?: string;
+  archivedByUserId?: string;
+  archiveReason?: string;
+  assignedTaskCount: number;
+  reportedTaskCount: number;
+  organizationMemberships: BackendUserOrganizationSummary[];
+  projectMemberships: BackendUserProjectSummary[];
+}
+
 export interface AppNotification {
   id: string;
   title: string;
