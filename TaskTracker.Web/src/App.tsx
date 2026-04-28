@@ -11,12 +11,15 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TaskDetailsPage } from "./pages/TaskDetailsPage";
 import { TasksPage } from "./pages/TasksPage";
+import { UsersPage } from "./pages/UsersPage";
+import { UserArchivePage } from "./pages/UserArchivePage";
 import { ForbiddenPage } from "./pages/ForbiddenPage";
 import { OrganizationsPage } from "./pages/OrganizationsPage";
 import { CommentsPage } from "./pages/CommentsPage";
 import MembersPage from "./pages/MembersPage";
 import AcceptInvitePage from "./pages/AcceptInvitePage";
 import { RequirePermission } from "./security/RequirePermission";
+import { RequireSuperAdmin } from "./security/RequireSuperAdmin";
 import { AppPermissions } from "./security/permissions";
 
 function HomeRedirect() {
@@ -87,6 +90,26 @@ export default function App() {
               element={
                 <RequirePermission permission={AppPermissions.TasksView}>
                   <TaskDetailsPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="/users"
+              element={
+                <RequirePermission permission={AppPermissions.UsersView}>
+                  <RequireSuperAdmin>
+                    <UsersPage />
+                  </RequireSuperAdmin>
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="/users/archive"
+              element={
+                <RequirePermission permission={AppPermissions.UsersManage}>
+                  <RequireSuperAdmin>
+                    <UserArchivePage />
+                  </RequireSuperAdmin>
                 </RequirePermission>
               }
             />

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { Button } from "devextreme-react/button";
+import SelectBox from "devextreme-react/select-box";
 import TextArea from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
 import { useApp } from "../context/AppContext";
@@ -18,7 +19,7 @@ import { getErrorMessage } from "../utils/getErrorMessage";
 import { AppPermissions, AppRoles } from "../security/permissions";
 import type { BackendComment, BackendEpic, BackendSprint } from "../types/app";
 import type { ScopeMember } from "../types/invitation";
-import type { TaskDto } from "../types/task";
+import type { TaskDto, TaskUserIdentity, UpdateTaskDto } from "../types/task";
 import { priorityLabel, statusLabel } from "../utils/taskPresentation";
 
 function toDisplayDate(value: string | null | undefined): string {
@@ -29,10 +30,24 @@ function toDisplayDate(value: string | null | undefined): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString();
 }
 
+function formatArchivedAssigneeOption(
+  identity: TaskUserIdentity | null | undefined,
+  fallbackUserId: string
+): string {
+  if (!identity) {
+    return `${fallbackUserId} (not currently assignable)`;
+  }
+
+  const name = identity.fullName?.trim() || fallbackUserId;
+  const roleSuffix = identity.role ? ` (${identity.role})` : "";
+  const status = identity.isArchived ? "Archived" : identity.isActive ? "Active" : "Inactive";
+  return `${name}${roleSuffix} (${status})`;
+}
+
 export function TaskDetailsPage() {
   const location = useLocation();
   const { projectId, taskId } = useParams();
-  const { tasks, projects, hasPermission, user, userPermissions } = useApp();
+  const { tasks, projects, hasPermission, user, userPermissions, updateTask } = useApp();
 
   const canViewComments = hasPermission(AppPermissions.CommentsView);
   const canAddComment = hasPermission(AppPermissions.CommentsAdd);
@@ -54,6 +69,10 @@ export function TaskDetailsPage() {
   const [commentActionLoading, setCommentActionLoading] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
+  const [reassignLoading, setReassignLoading] = useState(false);
+  const [reassignError, setReassignError] = useState("");
+  const [reassignSuccess, setReassignSuccess] = useState("");
 
   const parsedTaskId = useMemo(() => {
     const numeric = Number(taskId);
@@ -123,10 +142,27 @@ export function TaskDetailsPage() {
       return options?.fallbackUnassigned ? "Unassigned" : "-";
     }
 
+    const identity =
+      (task?.reporterId === userId ? task.reporterUser : null) ??
+      (task?.assigneeId === userId ? task.assigneeUser : null);
+
+    if (identity) {
+      const displayName = identity.fullName?.trim() || userId;
+      const roleSuffix = identity.role ? ` (${identity.role})` : "";
+      const statusLabel = identity.isArchived
+        ? "Archived"
+        : identity.isActive
+        ? "Active"
+        : "Inactive";
+      const statusSuffix = ` (${statusLabel})`;
+      const youSuffix = userId === user?.id ? " (You)" : "";
+      return `${displayName}${roleSuffix}${statusSuffix}${youSuffix}`;
+    }
+
     const member = memberInfoById.get(userId);
     if (member) {
       const youSuffix = userId === user?.id ? " (You)" : "";
-      return `${member.name} [${member.role}]${youSuffix}`;
+      return `${member.name} (${member.role})${youSuffix}`;
     }
 
     if (userId === user?.id) {
@@ -142,7 +178,7 @@ export function TaskDetailsPage() {
     }
 
     return buildPersonDisplay(task.reporterId);
-  }, [task?.reporterId, memberInfoById, user?.id, user?.fullName]);
+  }, [task?.reporterId, task?.reporterUser, task?.assigneeId, task?.assigneeUser, memberInfoById, user?.id, user?.fullName]);
 
   const assigneeDisplay = useMemo(() => {
     if (!task?.assigneeId) {
@@ -150,7 +186,47 @@ export function TaskDetailsPage() {
     }
 
     return buildPersonDisplay(task.assigneeId, { fallbackUnassigned: true });
-  }, [task?.assigneeId, memberInfoById, user?.id, user?.fullName]);
+  }, [task?.assigneeId, task?.assigneeUser, task?.reporterId, task?.reporterUser, memberInfoById, user?.id, user?.fullName]);
+
+  const canReassignTask = useMemo(() => {
+    if (!task || !resolvedProjectId) {
+      return false;
+    }
+
+    const canUpdateTask = hasPermission(AppPermissions.TasksUpdate, "Project", resolvedProjectId);
+    const canAssignTask = hasPermission(AppPermissions.TasksAssign, "Project", resolvedProjectId);
+    return canUpdateTask && (canAssignTask || Boolean(userPermissions?.isSuperAdmin));
+  }, [hasPermission, resolvedProjectId, task, userPermissions?.isSuperAdmin]);
+
+  const toMemberLabel = (member: ScopeMember): string =>
+    `${member.firstName} ${member.lastName}`.trim() + ` (${member.role})`;
+
+  const assignableOptions = useMemo(() => {
+    const options = projectMembers.map((member) => ({
+      id: member.userId,
+      label: toMemberLabel(member),
+    }));
+
+    const currentAssigneeId = task?.assigneeId?.trim();
+    if (
+      currentAssigneeId &&
+      !options.some((option) => option.id === currentAssigneeId)
+    ) {
+      const archivedAssigneeLabel = formatArchivedAssigneeOption(task?.assigneeUser, currentAssigneeId);
+      options.unshift({
+        id: currentAssigneeId,
+        label: archivedAssigneeLabel,
+      });
+    }
+
+    return options;
+  }, [projectMembers, task?.assigneeId, task?.assigneeUser]);
+
+  useEffect(() => {
+    setSelectedAssigneeId(task?.assigneeId ?? "");
+    setReassignError("");
+    setReassignSuccess("");
+  }, [task?.id, task?.assigneeId]);
 
   useEffect(() => {
     if (!resolvedProjectId || !parsedTaskId) {
@@ -395,6 +471,54 @@ export function TaskDetailsPage() {
     }
   };
 
+  const handleReassignTask = async () => {
+    if (!task || !resolvedProjectId) {
+      return;
+    }
+
+    if (!canReassignTask) {
+      setReassignError("You do not have permission to reassign this task.");
+      return;
+    }
+
+    const normalizedCurrentAssignee = task.assigneeId ?? "";
+    const normalizedSelectedAssignee = selectedAssigneeId.trim();
+    if (normalizedCurrentAssignee === normalizedSelectedAssignee) {
+      setReassignSuccess("Task assignee is already up to date.");
+      setReassignError("");
+      return;
+    }
+
+    const updatePayload: UpdateTaskDto = {
+      epicId: task.epicId ?? null,
+      sprintId: task.sprintId ?? null,
+      assigneeId: normalizedSelectedAssignee || null,
+      title: task.title ?? "",
+      description: task.description ?? undefined,
+      status: task.status,
+      priority: task.priority,
+      startDate: task.startDate ?? null,
+      endDate: task.endDate ?? null,
+    };
+
+    setReassignLoading(true);
+    setReassignError("");
+    setReassignSuccess("");
+
+    try {
+      const updatedTask = await updateTask(task.id, task.projectId, updatePayload);
+      const refreshedTask = await getTaskById(task.id, task.projectId);
+      const taskForView = refreshedTask ?? updatedTask;
+      setTask(taskForView);
+      setSelectedAssigneeId(taskForView.assigneeId ?? "");
+      setReassignSuccess("Task reassigned successfully.");
+    } catch (error) {
+      setReassignError(getErrorMessage(error, "Failed to reassign task."));
+    } finally {
+      setReassignLoading(false);
+    }
+  };
+
   if (!resolvedProjectId || !parsedTaskId) {
     return (
       <div className="page-stack">
@@ -477,6 +601,33 @@ export function TaskDetailsPage() {
               <label>
                 Assignee
                 <TextBox value={assigneeDisplay} readOnly />
+                {canReassignTask && (
+                  <div className="page-stack" style={{ marginTop: "0.55rem", gap: "0.45rem" }}>
+                    <SelectBox
+                      dataSource={assignableOptions}
+                      displayExpr="label"
+                      valueExpr="id"
+                      value={selectedAssigneeId || null}
+                      showClearButton
+                      placeholder="Reassign task (optional)"
+                      onValueChanged={(event) => {
+                        setSelectedAssigneeId(String(event.value ?? ""));
+                        setReassignError("");
+                        setReassignSuccess("");
+                      }}
+                    />
+                    <div className="inline-actions" style={{ justifyContent: "flex-end" }}>
+                      <Button
+                        text={reassignLoading ? "Saving..." : "Save Assignee"}
+                        type="default"
+                        onClick={() => void handleReassignTask()}
+                        disabled={reassignLoading}
+                      />
+                    </div>
+                    {reassignError && <div className="form-error">{reassignError}</div>}
+                    {reassignSuccess && <div className="page-inline-info">{reassignSuccess}</div>}
+                  </div>
+                )}
               </label>
 
               <label>

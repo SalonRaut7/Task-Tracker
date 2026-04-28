@@ -42,7 +42,11 @@ public sealed class GetMembersByScopeQueryHandler : IRequestHandler<GetMembersBy
         if (request.ScopeType == ScopeType.Organization)
         {
             var memberships = await _membershipRepository.GetOrganizationMembershipsAsync(request.ScopeId, cancellationToken);
-            members = memberships.Select(uo => new MemberDto
+            var activeMemberships = memberships
+                .Where(uo => uo.User.IsActive && !uo.User.IsArchived)
+                .ToList();
+
+            members = activeMemberships.Select(uo => new MemberDto
             {
                 UserId = uo.UserId,
                 Email = uo.User.Email!,
@@ -52,7 +56,7 @@ public sealed class GetMembersByScopeQueryHandler : IRequestHandler<GetMembersBy
                 JoinedAt = uo.JoinedAt
             }).ToList();
 
-            var memberUserIds = memberships
+            var memberUserIds = activeMemberships
                 .Select(m => m.UserId)
                 .ToHashSet(StringComparer.Ordinal);
 
@@ -61,13 +65,17 @@ public sealed class GetMembersByScopeQueryHandler : IRequestHandler<GetMembersBy
 
             invitableUsers = await _userManager.Users
                 .AsNoTracking()
-                .Where(u => u.IsActive && !excludedIds.Contains(u.Id))
+                .Where(u => u.IsActive && !u.IsArchived && !excludedIds.Contains(u.Id))
                 .ToListAsync(cancellationToken);
         }
         else
         {
             var memberships = await _membershipRepository.GetProjectMembershipsAsync(request.ScopeId, cancellationToken);
-            members = memberships.Select(up => new MemberDto
+            var activeMemberships = memberships
+                .Where(up => up.User.IsActive && !up.User.IsArchived)
+                .ToList();
+
+            members = activeMemberships.Select(up => new MemberDto
             {
                 UserId = up.UserId,
                 Email = up.User.Email!,
@@ -83,7 +91,7 @@ public sealed class GetMembersByScopeQueryHandler : IRequestHandler<GetMembersBy
             var organizationMemberships = await _membershipRepository
                 .GetOrganizationMembershipsAsync(project.OrganizationId, cancellationToken);
 
-            var projectMemberUserIds = memberships
+            var projectMemberUserIds = activeMemberships
                 .Select(m => m.UserId)
                 .ToHashSet(StringComparer.Ordinal);
 
@@ -91,7 +99,7 @@ public sealed class GetMembersByScopeQueryHandler : IRequestHandler<GetMembersBy
             var superAdminIds = superAdmins.Select(u => u.Id).ToHashSet(StringComparer.Ordinal);
 
             invitableUsers = organizationMemberships
-                .Where(uo => uo.User.IsActive && !projectMemberUserIds.Contains(uo.UserId) && !superAdminIds.Contains(uo.UserId))
+                .Where(uo => uo.User.IsActive && !uo.User.IsArchived && !projectMemberUserIds.Contains(uo.UserId) && !superAdminIds.Contains(uo.UserId))
                 .Select(uo => uo.User)
                 .ToList();
         }

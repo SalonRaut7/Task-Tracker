@@ -14,6 +14,14 @@ export enum TaskPriority {
   Highest
 }
 
+export interface TaskUserIdentity {
+  userId: string;
+  fullName: string;
+  role?: string | null;
+  isActive: boolean;
+  isArchived: boolean;
+}
+
 export interface TaskDto {
   id: number;
   projectId: string;
@@ -21,6 +29,8 @@ export interface TaskDto {
   sprintId?: string | null;
   assigneeId?: string | null;
   reporterId: string;
+  assigneeUser?: TaskUserIdentity | null;
+  reporterUser?: TaskUserIdentity | null;
   title?: string;
   description?: string;
   status: Status;
