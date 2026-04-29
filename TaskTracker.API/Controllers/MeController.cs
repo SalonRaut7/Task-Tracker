@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Features.Members.Queries.GetMyPermissions;
+using TaskTracker.Application.Features.Users.Commands.UpdateCurrentUserProfile;
+using TaskTracker.Application.Features.Users.Queries.GetCurrentUserProfile;
 
 namespace TaskTracker.API.Controllers;
 
@@ -26,6 +28,22 @@ public class MeController : ControllerBase
     public async Task<ActionResult<UserPermissionsDto>> GetPermissions(CancellationToken cancellationToken)
     {
         var result = await _mediator.Send(new GetMyPermissionsQuery(), cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpGet("profile")]
+    public async Task<ActionResult<CurrentUserProfileDto>> GetProfile(CancellationToken cancellationToken)
+    {
+        var result = await _mediator.Send(new GetCurrentUserProfileQuery(), cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPut("profile")]
+    public async Task<ActionResult<CurrentUserProfileDto>> UpdateProfile(
+        [FromBody] UpdateCurrentUserProfileCommand request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _mediator.Send(request, cancellationToken);
         return Ok(result);
     }
 }

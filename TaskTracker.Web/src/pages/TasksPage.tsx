@@ -303,6 +303,7 @@ export function TasksPage() {
     }),
     []
   );
+  const dateBoxDropDownOptions = selectBoxDropDownOptions;
 
   const toAssigneeLabel = (member: ScopeMember): string =>
     `${member.firstName} ${member.lastName}`.trim() + ` (${member.role})`;
@@ -1075,6 +1076,7 @@ export function TasksPage() {
                 <DateBox
                   type="date"
                   value={editForm.startDate || null}
+                  dropDownOptions={dateBoxDropDownOptions}
                   readOnly={taskPopupMode === "view"}
                   onValueChanged={(event) =>
                     setEditForm((prev) =>
@@ -1089,6 +1091,7 @@ export function TasksPage() {
                 <DateBox
                   type="date"
                   value={editForm.endDate || null}
+                  dropDownOptions={dateBoxDropDownOptions}
                   readOnly={taskPopupMode === "view"}
                   onValueChanged={(event) =>
                     setEditForm((prev) =>
@@ -1287,6 +1290,7 @@ export function TasksPage() {
               <DateBox
                 type="date"
                 value={createForm.startDate || null}
+                dropDownOptions={dateBoxDropDownOptions}
                 onValueChanged={(event) =>
                   setCreateForm((prev) => ({
                     ...prev,
@@ -1301,6 +1305,7 @@ export function TasksPage() {
               <DateBox
                 type="date"
                 value={createForm.endDate || null}
+                dropDownOptions={dateBoxDropDownOptions}
                 onValueChanged={(event) =>
                   setCreateForm((prev) => ({
                     ...prev,
