@@ -9,6 +9,14 @@ export interface AppUser {
   roles: string[];
 }
 
+export interface CurrentUserProfile {
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+}
+
 export interface AuthResponse {
   accessToken: string;
   refreshToken: string;

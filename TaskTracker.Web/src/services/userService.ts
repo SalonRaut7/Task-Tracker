@@ -1,10 +1,36 @@
 import { apiRequest } from "./apiClient";
 import type {
+  CurrentUserProfile,
   BackendUserDetails,
   BackendUserOrganizationSummary,
   BackendUserProjectSummary,
   BackendUserSummary,
 } from "../types/app";
+
+export async function getCurrentUserProfile(): Promise<CurrentUserProfile> {
+  const raw = await apiRequest<unknown>("/api/Me/profile", {
+    method: "GET",
+    requiresAuth: true,
+  });
+
+  return normalizeCurrentUserProfile(raw);
+}
+
+export async function updateCurrentUserProfile(payload: {
+  firstName: string;
+  lastName: string;
+}): Promise<CurrentUserProfile> {
+  const raw = await apiRequest<unknown>("/api/Me/profile", {
+    method: "PUT",
+    requiresAuth: true,
+    body: {
+      firstName: payload.firstName.trim(),
+      lastName: payload.lastName.trim(),
+    },
+  });
+
+  return normalizeCurrentUserProfile(raw);
+}
 
 export async function getUsers(): Promise<BackendUserSummary[]> {
   const raw = await apiRequest<unknown[]>("/api/Users", {
@@ -139,6 +165,31 @@ function normalizeUserDetails(raw: unknown): BackendUserDetails | null {
     projectMemberships: projectMembershipsRaw
       .map(normalizeProjectMembership)
       .filter((entry): entry is BackendUserProjectSummary => entry !== null),
+  };
+}
+
+function normalizeCurrentUserProfile(raw: unknown): CurrentUserProfile {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Invalid profile payload received from backend.");
+  }
+
+  const item = raw as Record<string, unknown>;
+  const userId = toString(item.userId ?? item.UserId);
+  const email = toString(item.email ?? item.Email);
+  const firstName = toString(item.firstName ?? item.FirstName);
+  const lastName = toString(item.lastName ?? item.LastName);
+  const fullName = toString(item.fullName ?? item.FullName) || `${firstName} ${lastName}`.trim();
+
+  if (!userId || !email || !firstName || !lastName) {
+    throw new Error("Invalid profile payload received from backend.");
+  }
+
+  return {
+    userId,
+    email,
+    firstName,
+    lastName,
+    fullName,
   };
 }
 

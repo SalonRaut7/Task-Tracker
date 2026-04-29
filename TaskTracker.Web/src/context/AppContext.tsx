@@ -30,10 +30,14 @@ import {
 } from "../services/taskService";
 import { getProjects } from "../services/projectService";
 import { getMyPermissions } from "../services/memberService";
+import {
+  updateCurrentUserProfile as updateCurrentUserProfileRequest,
+} from "../services/userService";
 import type {
   AppNotification,
   AppUser,
   BackendProject,
+  CurrentUserProfile,
   RegisterPayload,
   RegisterResponse,
   ThemeMode,
@@ -69,6 +73,10 @@ interface AppContextValue {
   logout: () => Promise<void>;
   refreshWorkspaceData: (options?: { includeTasks?: boolean }) => Promise<void>;
   refreshPermissions: () => Promise<void>;
+  updateCurrentUserProfile: (
+    firstName: string,
+    lastName: string
+  ) => Promise<CurrentUserProfile>;
   toggleTheme: () => void;
   toggleSidebar: () => void;
   addTask: (task: CreateTaskDto) => Promise<TaskDto>;
@@ -280,6 +288,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPermissionsLoaded(true);
     }
   }, []);
+
+  const updateCurrentUserProfile = useCallback(
+    async (firstName: string, lastName: string): Promise<CurrentUserProfile> => {
+      const profile = await updateCurrentUserProfileRequest({ firstName, lastName });
+      const nextUser: AppUser = {
+        ...(user ?? {
+          id: profile.userId,
+          email: profile.email,
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+          fullName: profile.fullName,
+          roles: [],
+        }),
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        fullName: profile.fullName,
+      };
+
+      setUser(nextUser);
+      localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+
+      return profile;
+    },
+    [user]
+  );
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_KEY) as ThemeMode | null;
@@ -546,6 +579,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       logout,
       refreshWorkspaceData,
       refreshPermissions,
+      updateCurrentUserProfile,
       toggleTheme,
       toggleSidebar,
       addTask,
@@ -571,6 +605,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sidebarCollapsed,
       refreshWorkspaceData,
       refreshPermissions,
+      updateCurrentUserProfile,
     ]
   );
 
