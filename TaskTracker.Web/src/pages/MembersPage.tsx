@@ -26,6 +26,7 @@ import type {
 } from "../types/invitation";
 import "../styles/members.css";
 import { getErrorMessage } from "../utils/getErrorMessage";
+import { buildConnection } from "../services/signalRService";
 
 type ScopeInfo = {
   scopeType: ScopeTypeNumeric;
@@ -236,6 +237,27 @@ export default function MembersPage() {
 
     void fetchData();
   }, [fetchData, scopeId]);
+
+  useEffect(() => {
+    if (!scopeId || !canViewMembers) {
+      return;
+    }
+
+    const conn = buildConnection();
+
+    const handleScopeMembersChanged = (payload: { scopeType: ScopeType; scopeId: string }) => {
+      if (payload.scopeType === scopeTypeName && payload.scopeId === scopeId) {
+        void fetchData();
+        void refreshPermissions();
+      }
+    };
+
+    conn.on("ScopeMembersChanged", handleScopeMembersChanged);
+
+    return () => {
+      conn.off("ScopeMembersChanged", handleScopeMembersChanged);
+    };
+  }, [canViewMembers, fetchData, refreshPermissions, scopeId, scopeTypeName]);
 
   const handleInvite = async () => {
     if (!canInviteMembers) {

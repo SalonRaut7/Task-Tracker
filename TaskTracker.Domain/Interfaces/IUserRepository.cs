@@ -4,6 +4,8 @@ namespace TaskTracker.Domain.Interfaces;
 
 public interface IUserRepository
 {
+    Task<string?> GetFullNameAsync(string userId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> GetSuperAdminUserIdsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<UserSummaryReadModel>> GetUserSummariesAsync(
         bool archived,
         CancellationToken cancellationToken = default);

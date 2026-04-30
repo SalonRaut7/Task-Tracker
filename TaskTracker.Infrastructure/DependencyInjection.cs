@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Interfaces;
 using TaskTracker.Application.Options;
 using TaskTracker.Domain.Entities.Identity;
 using TaskTracker.Domain.Interfaces;
@@ -22,8 +23,12 @@ public static class DependencyInjection
         services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
         services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
         services.Configure<InviteOptions>(configuration.GetSection(InviteOptions.SectionName));
+        services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
+        services.Configure<IdentitySecurityOptions>(configuration.GetSection(IdentitySecurityOptions.SectionName));
 
         // ── ASP.NET Identity ─────────────────────────────────────
+        var identitySecurityOptions = configuration.GetSection(IdentitySecurityOptions.SectionName).Get<IdentitySecurityOptions>() ?? new IdentitySecurityOptions();
+
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
         {
             // Password policy
@@ -34,8 +39,8 @@ public static class DependencyInjection
             options.Password.RequiredLength = 8;
 
             // Lockout
-            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
-            options.Lockout.MaxFailedAccessAttempts = 5;
+            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(identitySecurityOptions.LockoutMinutes);
+            options.Lockout.MaxFailedAccessAttempts = identitySecurityOptions.MaxFailedAccessAttempts;
             options.Lockout.AllowedForNewUsers = true;
 
             // User
@@ -53,6 +58,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailSender, EmailSender>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+        services.AddScoped<INotificationPushService, NotificationPushService>();
 
         // ── Repositories ─────────────────────────────────────────
         services.AddScoped<ITaskRepository, TaskRepository>();
@@ -66,6 +72,7 @@ public static class DependencyInjection
         services.AddScoped<IInvitationRepository, InvitationRepository>();
         services.AddScoped<IMembershipRepository, MembershipRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
 
         return services;
     }

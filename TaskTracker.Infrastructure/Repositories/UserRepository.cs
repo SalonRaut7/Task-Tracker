@@ -15,6 +15,38 @@ public sealed class UserRepository : IUserRepository
         _dbContext = dbContext;
     }
 
+    public async Task<string?> GetFullNameAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var names = await _dbContext.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.FirstName, u.LastName })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return names is null ? null : $"{names.FirstName} {names.LastName}".Trim();
+    }
+
+    public async Task<IReadOnlyList<string>> GetSuperAdminUserIdsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.UserRoles
+            .AsNoTracking()
+            .Join(
+                _dbContext.Roles.AsNoTracking(),
+                userRole => userRole.RoleId,
+                role => role.Id,
+                (userRole, role) => new { userRole.UserId, role.Name })
+            .Where(item => item.Name == AppRoles.SuperAdmin)
+            .Join(
+                _dbContext.Users.AsNoTracking(),
+                roleItem => roleItem.UserId,
+                user => user.Id,
+                (roleItem, user) => new { roleItem.UserId, user.IsActive, user.IsArchived })
+            .Where(item => item.IsActive && !item.IsArchived)
+            .Select(item => item.UserId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<UserSummaryReadModel>> GetUserSummariesAsync(
         bool archived,
         CancellationToken cancellationToken = default)

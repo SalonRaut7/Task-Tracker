@@ -19,6 +19,7 @@ using MediatR;
 using FluentValidation;
 using Serilog;
 using Microsoft.Extensions.Options;
+using TaskTracker.Infrastructure.Hubs;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -31,7 +32,9 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 
 // ── Database ─────────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
+           .ConfigureWarnings(w => w.Ignore(
+               Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
 // ── Options ──────────────────────────────────────────────────────
 builder.Services.Configure<TaskDateRulesOptions>(
@@ -65,6 +68,21 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero   // no grace period — exact expiry
     };
+
+    // Allow JWT token from query string for SignalR WebSocket handshake
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
+    };
 });
 
 // ── Authorization (Permission-based policies) ────────────────────
@@ -89,6 +107,10 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// ── SignalR ──────────────────────────────────────────────────────
+builder.Services.AddSignalR();
+builder.Services.AddHostedService<TaskTracker.Infrastructure.Services.DueDateMonitorService>();
+
 // ── CORS ─────────────────────────────────────────────────────────
 builder.Services.AddCors(options =>
 {
@@ -96,7 +118,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins("http://localhost:5173")
               .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              .AllowCredentials();  // Required for SignalR WebSocket
     });
 });
 
@@ -135,6 +158,7 @@ app.UseAuthentication();    // MUST come before UseAuthorization()
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 
 try

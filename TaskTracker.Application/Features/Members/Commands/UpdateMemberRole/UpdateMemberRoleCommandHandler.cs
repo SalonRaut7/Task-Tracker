@@ -1,6 +1,7 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Interfaces;
@@ -11,13 +12,16 @@ public sealed class UpdateMemberRoleCommandHandler : IRequestHandler<UpdateMembe
 {
     private readonly ICurrentUserService _currentUser;
     private readonly IMembershipRepository _membershipRepository;
+    private readonly INotificationPushService _pushService;
 
     public UpdateMemberRoleCommandHandler(
         ICurrentUserService currentUser,
-        IMembershipRepository membershipRepository)
+        IMembershipRepository membershipRepository,
+        INotificationPushService pushService)
     {
         _currentUser = currentUser;
         _membershipRepository = membershipRepository;
+        _pushService = pushService;
     }
 
     public async Task<MemberDto> Handle(UpdateMemberRoleCommand request, CancellationToken cancellationToken)
@@ -51,6 +55,10 @@ public sealed class UpdateMemberRoleCommandHandler : IRequestHandler<UpdateMembe
         {
             var membership = await _membershipRepository.UpdateOrganizationMemberRoleAsync(
                 request.UserId, request.ScopeId, request.NewRole, cancellationToken);
+
+            await _pushService.BroadcastScopeMembersChangedAsync(request.ScopeType, request.ScopeId, cancellationToken);
+            await _pushService.BroadcastUserWorkspaceChangedAsync(request.UserId, cancellationToken);
+
             return new MemberDto
             {
                 UserId = membership.UserId,
@@ -64,6 +72,10 @@ public sealed class UpdateMemberRoleCommandHandler : IRequestHandler<UpdateMembe
 
         var projectMembership = await _membershipRepository.UpdateProjectMemberRoleAsync(
             request.UserId, request.ScopeId, request.NewRole, cancellationToken);
+
+        await _pushService.BroadcastScopeMembersChangedAsync(request.ScopeType, request.ScopeId, cancellationToken);
+        await _pushService.BroadcastUserWorkspaceChangedAsync(request.UserId, cancellationToken);
+
         return new MemberDto
         {
             UserId = projectMembership.UserId,

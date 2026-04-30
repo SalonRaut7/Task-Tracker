@@ -1,4 +1,5 @@
 using MediatR;
+using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Interfaces;
@@ -11,17 +12,20 @@ public sealed class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvit
     private readonly ICurrentUserService _currentUser;
     private readonly ITokenService _tokenService;
     private readonly IMembershipRepository _membershipRepository;
+    private readonly INotificationPushService _pushService;
 
     public AcceptInvitationCommandHandler(
         IInvitationRepository invitationRepository,
         ICurrentUserService currentUser,
         ITokenService tokenService,
-        IMembershipRepository membershipRepository)
+        IMembershipRepository membershipRepository,
+        INotificationPushService pushService)
     {
         _invitationRepository = invitationRepository;
         _currentUser = currentUser;
         _tokenService = tokenService;
         _membershipRepository = membershipRepository;
+        _pushService = pushService;
     }
 
     public async Task<AcceptInvitationResult> Handle(AcceptInvitationCommand request, CancellationToken cancellationToken)
@@ -78,6 +82,9 @@ public sealed class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvit
         }
 
         await _invitationRepository.UpdateAsync(invitation, cancellationToken);
+
+        await _pushService.BroadcastScopeMembersChangedAsync(invitation.ScopeType, invitation.ScopeId, cancellationToken);
+        await _pushService.BroadcastUserWorkspaceChangedAsync(userId, cancellationToken);
 
         return new AcceptInvitationResult
         {

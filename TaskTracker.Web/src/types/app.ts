@@ -187,9 +187,23 @@ export interface BackendUserDetails {
 
 export interface AppNotification {
   id: string;
-  title: string;
+  recipientUserId?: string;
+  actorUserId: string;
+  actorName: string;
+  type:
+    | "TaskCreated"
+    | "TaskUpdated"
+    | "TaskDeleted"
+    | "TaskReassigned"
+    | "TaskDueSoon"
+    | "TaskOverdue"
+    | "ProjectUpdated"
+    | "ProjectDeleted"
+    | "OrganizationUpdated"
+    | "OrganizationDeleted";
   message: string;
-  read: boolean;
+  taskId: number | null;
+  projectId: string | null;
+  isRead: boolean;
   createdAt: string;
-  type: "info" | "warning" | "success" | "error";
 }

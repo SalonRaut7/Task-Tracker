@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { Button } from "devextreme-react/button";
 import SelectBox from "devextreme-react/select-box";
@@ -21,6 +21,7 @@ import type { BackendComment, BackendEpic, BackendSprint } from "../types/app";
 import type { ScopeMember } from "../types/invitation";
 import type { TaskDto, TaskUserIdentity, UpdateTaskDto } from "../types/task";
 import { priorityLabel, statusLabel } from "../utils/taskPresentation";
+import { buildConnection } from "../services/signalRService";
 
 function toDisplayDate(value: string | null | undefined): string {
   if (!value) {
@@ -136,6 +137,52 @@ export function TaskDetailsPage() {
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }, [comments]);
+
+  const reloadLinks = useCallback(async () => {
+    if (!resolvedProjectId) {
+      setEpics([]);
+      setSprints([]);
+      setProjectMembers([]);
+      return;
+    }
+
+    try {
+      const [epicsResult, sprintsResult, membersResult] = await Promise.all([
+        getEpics(resolvedProjectId),
+        getSprints(resolvedProjectId),
+        getMembersByScope(1, resolvedProjectId),
+      ]);
+
+      setEpics(epicsResult);
+      setSprints(sprintsResult);
+      setProjectMembers(membersResult.members);
+    } catch {
+      setEpics([]);
+      setSprints([]);
+      setProjectMembers([]);
+    }
+  }, [resolvedProjectId]);
+
+  const reloadComments = useCallback(async () => {
+    if (!canViewComments || !parsedTaskId) {
+      setComments([]);
+      setCommentsError("");
+      setCommentsLoading(false);
+      return;
+    }
+
+    setCommentsLoading(true);
+    setCommentsError("");
+
+    try {
+      const result = await getComments(parsedTaskId);
+      setComments(result);
+    } catch (error) {
+      setCommentsError(getErrorMessage(error, "Failed to load comments."));
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [canViewComments, parsedTaskId]);
 
   const buildPersonDisplay = (userId: string, options?: { fallbackUnassigned?: boolean }) => {
     if (!userId) {
@@ -281,80 +328,40 @@ export function TaskDetailsPage() {
   }, [resolvedProjectId, parsedTaskId, tasks]);
 
   useEffect(() => {
-    if (!resolvedProjectId) {
-      setEpics([]);
-      setSprints([]);
-      setProjectMembers([]);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadLinks = async () => {
-      try {
-        const [epicsResult, sprintsResult, membersResult] = await Promise.all([
-          getEpics(resolvedProjectId),
-          getSprints(resolvedProjectId),
-          getMembersByScope(1, resolvedProjectId),
-        ]);
-
-        if (!cancelled) {
-          setEpics(epicsResult);
-          setSprints(sprintsResult);
-          setProjectMembers(membersResult.members);
-        }
-      } catch {
-        if (!cancelled) {
-          setEpics([]);
-          setSprints([]);
-          setProjectMembers([]);
-        }
-      }
-    };
-
-    void loadLinks();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [resolvedProjectId]);
+    void reloadLinks();
+  }, [reloadLinks]);
 
   useEffect(() => {
-    if (!canViewComments || !parsedTaskId) {
-      setComments([]);
-      setCommentsError("");
-      setCommentsLoading(false);
+    void reloadComments();
+  }, [reloadComments]);
+
+  useEffect(() => {
+    if (!resolvedProjectId || !parsedTaskId) {
       return;
     }
 
-    let cancelled = false;
+    const conn = buildConnection();
 
-    const loadComments = async () => {
-      setCommentsLoading(true);
-      setCommentsError("");
-
-      try {
-        const result = await getComments(parsedTaskId);
-        if (!cancelled) {
-          setComments(result);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setCommentsError(getErrorMessage(error, "Failed to load comments."));
-        }
-      } finally {
-        if (!cancelled) {
-          setCommentsLoading(false);
-        }
+    const handleTaskCommentsChanged = (payload: { projectId: string; taskId: number }) => {
+      if (payload.projectId === resolvedProjectId && payload.taskId === parsedTaskId) {
+        void reloadComments();
       }
     };
 
-    void loadComments();
+    const handleScopeMembersChanged = (payload: { scopeType: string; scopeId: string }) => {
+      if (payload.scopeType === "Project" && payload.scopeId === resolvedProjectId) {
+        void reloadLinks();
+      }
+    };
+
+    conn.on("TaskCommentsChanged", handleTaskCommentsChanged);
+    conn.on("ScopeMembersChanged", handleScopeMembersChanged);
 
     return () => {
-      cancelled = true;
+      conn.off("TaskCommentsChanged", handleTaskCommentsChanged);
+      conn.off("ScopeMembersChanged", handleScopeMembersChanged);
     };
-  }, [canViewComments, parsedTaskId]);
+  }, [parsedTaskId, reloadComments, reloadLinks, resolvedProjectId]);
 
   const handleAddComment = async () => {
     if (!parsedTaskId) {

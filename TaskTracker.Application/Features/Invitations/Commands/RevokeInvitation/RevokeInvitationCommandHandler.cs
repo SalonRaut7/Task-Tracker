@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Interfaces;
@@ -11,15 +12,18 @@ public sealed class RevokeInvitationCommandHandler : IRequestHandler<RevokeInvit
     private readonly IInvitationRepository _invitationRepository;
     private readonly ICurrentUserService _currentUser;
     private readonly IPermissionEvaluator _permissionEvaluator;
+    private readonly INotificationPushService _pushService;
 
     public RevokeInvitationCommandHandler(
         IInvitationRepository invitationRepository,
         ICurrentUserService currentUser,
-        IPermissionEvaluator permissionEvaluator)
+        IPermissionEvaluator permissionEvaluator,
+        INotificationPushService pushService)
     {
         _invitationRepository = invitationRepository;
         _currentUser = currentUser;
         _permissionEvaluator = permissionEvaluator;
+        _pushService = pushService;
     }
 
     public async Task<bool> Handle(RevokeInvitationCommand request, CancellationToken cancellationToken)
@@ -56,6 +60,8 @@ public sealed class RevokeInvitationCommandHandler : IRequestHandler<RevokeInvit
 
         invitation.Revoke();
         await _invitationRepository.UpdateAsync(invitation, cancellationToken);
+
+        await _pushService.BroadcastScopeMembersChangedAsync(invitation.ScopeType, invitation.ScopeId, cancellationToken);
         return true;
     }
 }

@@ -2,6 +2,7 @@ using AutoMapper;
 using MediatR;
 using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Features.Tasks.Notifications;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Enums;
@@ -12,20 +13,29 @@ namespace TaskTracker.Application.Features.Tasks.Commands.CreateTask;
 public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskDto>
 {
     private readonly ITaskRepository _taskRepository;
+    private readonly IMembershipRepository _membershipRepository;
     private readonly IMapper _mapper;
     private readonly ICurrentUserService _currentUser;
     private readonly IPermissionEvaluator _permissionEvaluator;
+    private readonly IPublisher _publisher;
+    private readonly IUserRepository _userRepository;
 
     public CreateTaskCommandHandler(
         ITaskRepository taskRepository,
+        IMembershipRepository membershipRepository,
         IMapper mapper,
         ICurrentUserService currentUser,
-        IPermissionEvaluator permissionEvaluator)
+        IPermissionEvaluator permissionEvaluator,
+        IPublisher publisher,
+        IUserRepository userRepository)
     {
         _taskRepository = taskRepository;
+        _membershipRepository = membershipRepository;
         _mapper = mapper;
         _currentUser = currentUser;
         _permissionEvaluator = permissionEvaluator;
+        _publisher = publisher;
+        _userRepository = userRepository;
     }
 
     public async Task<TaskDto> Handle(
@@ -43,6 +53,16 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskD
         if (!projectExists)
         {
             throw new KeyNotFoundException($"Project '{command.ProjectId}' was not found.");
+        }
+
+        if (!_currentUser.IsSuperAdmin)
+        {
+            var projectIds = await _membershipRepository.GetUserProjectIdsAsync(currentUserId, cancellationToken);
+            if (!projectIds.Contains(command.ProjectId))
+            {
+                throw new ForbiddenAccessException(
+                    "You must be a direct member of the project to create tasks there.");
+            }
         }
 
         if (command.EpicId.HasValue)
@@ -108,6 +128,22 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskD
 
         await _taskRepository.AddAsync(task, cancellationToken);
 
-        return _mapper.Map<TaskDto>(task);
+        var dto = _mapper.Map<TaskDto>(task);
+
+        // Publish real-time notification
+        var actorName = await _userRepository.GetFullNameAsync(currentUserId, cancellationToken) ?? "Unknown";
+        await _publisher.Publish(new TaskChangedNotification
+        {
+            EventType = "Created",
+            Task = dto,
+            TaskId = task.Id,
+            TaskTitle = task.Title,
+            ProjectId = command.ProjectId,
+            ActorUserId = currentUserId,
+            ActorName = actorName,
+            NewAssigneeId = task.AssigneeId,
+        }, cancellationToken);
+
+        return dto;
     }
 }
