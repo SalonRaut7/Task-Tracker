@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Interfaces;
 
@@ -11,17 +12,20 @@ public sealed class DeleteCommentCommandHandler : IRequestHandler<DeleteCommentC
     private readonly ITaskRepository _taskRepository;
     private readonly ICurrentUserService _currentUser;
     private readonly IPermissionEvaluator _permissionEvaluator;
+    private readonly INotificationPushService _pushService;
 
     public DeleteCommentCommandHandler(
         ICommentRepository commentRepository,
         ITaskRepository taskRepository,
         ICurrentUserService currentUser,
-        IPermissionEvaluator permissionEvaluator)
+        IPermissionEvaluator permissionEvaluator,
+        INotificationPushService pushService)
     {
         _commentRepository = commentRepository;
         _taskRepository = taskRepository;
         _currentUser = currentUser;
         _permissionEvaluator = permissionEvaluator;
+        _pushService = pushService;
     }
 
     public async Task<bool> Handle(DeleteCommentCommand request, CancellationToken cancellationToken)
@@ -50,16 +54,16 @@ public sealed class DeleteCommentCommandHandler : IRequestHandler<DeleteCommentC
         if (!isAuthor)
         {
             // Not the author: check if user has higher role in the project
-            var task = await _taskRepository.GetByIdAsync(comment.TaskId, cancellationToken);
-            if (task is null)
+            var commentTask = await _taskRepository.GetByIdAsync(comment.TaskId, cancellationToken);
+            if (commentTask is null)
             {
                 return false;
             }
 
             var userRole = await _permissionEvaluator.GetUserRoleInScopeAsync(
-                userId, Domain.Enums.ScopeType.Project, task.ProjectId, cancellationToken);
+                userId, Domain.Enums.ScopeType.Project, commentTask.ProjectId, cancellationToken);
             var authorRole = await _permissionEvaluator.GetUserRoleInScopeAsync(
-                comment.AuthorId, Domain.Enums.ScopeType.Project, task.ProjectId, cancellationToken);
+                comment.AuthorId, Domain.Enums.ScopeType.Project, commentTask.ProjectId, cancellationToken);
 
             if (!CommentModerationHelper.CanModerateComment(userRole, authorRole))
             {
@@ -67,7 +71,17 @@ public sealed class DeleteCommentCommandHandler : IRequestHandler<DeleteCommentC
             }
         }
 
+        var commentTaskForBroadcast = await _taskRepository.GetByIdAsync(comment.TaskId, cancellationToken);
+
         await _commentRepository.DeleteAsync(comment, cancellationToken);
+
+        if (commentTaskForBroadcast is not null)
+        {
+            await _pushService.BroadcastTaskCommentsChangedAsync(
+                commentTaskForBroadcast.ProjectId,
+                commentTaskForBroadcast.Id,
+                cancellationToken);
+        }
         return true;
     }
 }

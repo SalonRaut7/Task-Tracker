@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Interfaces;
@@ -10,13 +11,16 @@ public sealed class RemoveMemberCommandHandler : IRequestHandler<RemoveMemberCom
 {
     private readonly ICurrentUserService _currentUser;
     private readonly IMembershipRepository _membershipRepository;
+    private readonly INotificationPushService _pushService;
 
     public RemoveMemberCommandHandler(
         ICurrentUserService currentUser,
-        IMembershipRepository membershipRepository)
+        IMembershipRepository membershipRepository,
+        INotificationPushService pushService)
     {
         _currentUser = currentUser;
         _membershipRepository = membershipRepository;
+        _pushService = pushService;
     }
 
     public async Task<bool> Handle(RemoveMemberCommand request, CancellationToken cancellationToken)
@@ -45,6 +49,9 @@ public sealed class RemoveMemberCommandHandler : IRequestHandler<RemoveMemberCom
             await _membershipRepository.RemoveProjectMemberAsync(
                 request.UserId, request.ScopeId, cancellationToken);
         }
+
+        await _pushService.BroadcastScopeMembersChangedAsync(request.ScopeType, request.ScopeId, cancellationToken);
+        await _pushService.BroadcastUserWorkspaceChangedAsync(request.UserId, cancellationToken);
 
         return true;
     }

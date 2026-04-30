@@ -11,11 +11,19 @@ namespace TaskTracker.Infrastructure.Services;
 public class EmailSender : IEmailSender
 {
     private readonly SmtpOptions _smtp;
+    private readonly OtpOptions _otp;
+    private readonly InviteOptions _invite;
     private readonly ILogger<EmailSender> _logger;
 
-    public EmailSender(IOptions<SmtpOptions> smtp, ILogger<EmailSender> logger)
+    public EmailSender(
+        IOptions<SmtpOptions> smtp,
+        IOptions<OtpOptions> otp,
+        IOptions<InviteOptions> invite,
+        ILogger<EmailSender> logger)
     {
         _smtp = smtp.Value;
+        _otp = otp.Value;
+        _invite = invite.Value;
         _logger = logger;
     }
 
@@ -34,7 +42,7 @@ public class EmailSender : IEmailSender
     <h2 style='color: #4F46E5;'>TaskTracker</h2>
     <p>Your verification code is:</p>
     <h1 style='letter-spacing: 8px; color: #4F46E5; font-size: 36px;'>{otpCode}</h1>
-    <p>This code expires in <strong>5 minutes</strong>.</p>
+    <p>This code expires in <strong>{_otp.ExpiryMinutes} minutes</strong>.</p>
     <p style='color: #888; font-size: 12px;'>If you did not request this code, please ignore this email.</p>
 </body>
 </html>";
@@ -52,7 +60,7 @@ public class EmailSender : IEmailSender
     <h2 style='color: #4F46E5;'>TaskTracker</h2>
     <p>You requested a password reset. Use the code below:</p>
     <h1 style='letter-spacing: 8px; color: #4F46E5; font-size: 36px;'>{resetToken}</h1>
-    <p>This code expires in <strong>15 minutes</strong>.</p>
+    <p>This code expires in <strong>{_otp.ExpiryMinutes} minutes</strong>.</p>
     <p style='color: #888; font-size: 12px;'>If you did not request this, please ignore this email.</p>
 </body>
 </html>";
@@ -83,7 +91,7 @@ public class EmailSender : IEmailSender
             Accept Invitation
         </a>
     </p>
-    <p style='color: #888; font-size: 12px;'>This invitation expires in 7 days. If you did not expect this, please ignore this email.</p>
+    <p style='color: #888; font-size: 12px;'>This invitation expires in {_invite.ExpirationDays} days. If you did not expect this, please ignore this email.</p>
 </body>
 </html>";
 

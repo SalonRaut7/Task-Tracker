@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.Extensions.Options;
 using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Features.Tasks.Notifications;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Interfaces;
@@ -17,19 +18,25 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
     private readonly TaskDateRulesOptions _taskDateRules;
     private readonly ICurrentUserService  _currentUser;
     private readonly IPermissionEvaluator _permissionEvaluator;
+    private readonly IPublisher           _publisher;
+    private readonly IUserRepository      _userRepository;
 
     public UpdateTaskCommandHandler(
         ITaskRepository taskRepository,
         IMapper mapper,
         IOptions<TaskDateRulesOptions> taskDateRules,
         ICurrentUserService currentUser,
-        IPermissionEvaluator permissionEvaluator)
+        IPermissionEvaluator permissionEvaluator,
+        IPublisher publisher,
+        IUserRepository userRepository)
     {
         _taskRepository = taskRepository;
         _mapper = mapper;
         _taskDateRules = taskDateRules.Value;
         _currentUser = currentUser;
         _permissionEvaluator = permissionEvaluator;
+        _publisher = publisher;
+        _userRepository = userRepository;
     }
 
     public async Task<TaskDto?> Handle(
@@ -45,6 +52,17 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
         {
             return null;
         }
+
+        // Capture old state for change detection
+        var oldTitle = task.Title;
+        var oldDescription = task.Description;
+        var oldStatus = (int)task.Status;
+        var oldPriority = task.Priority;
+        var oldEpicId = task.EpicId;
+        var oldSprintId = task.SprintId;
+        var oldAssigneeId = task.AssigneeId;
+        var oldStartDate = task.StartDate;
+        var oldEndDate = task.EndDate;
 
         if (command.EpicId.HasValue)
         {
@@ -121,6 +139,141 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
 
         await _taskRepository.UpdateAsync(task, cancellationToken);
 
-        return _mapper.Map<TaskDto>(task);
+        var dto = _mapper.Map<TaskDto>(task);
+        var changedFields = BuildChangedFields(command, oldTitle, oldDescription, oldStatus, oldPriority, oldEpicId, oldSprintId, oldStartDate, oldEndDate);
+
+        // Determine notification event type
+        var eventType = "Updated";
+        if ((int)command.Status != oldStatus) eventType = "StatusChanged";
+        if (assigneeId != oldAssigneeId) eventType = "Reassigned";
+
+        var currentUserId2 = _currentUser.UserId!;
+        var actorName = await _userRepository.GetFullNameAsync(currentUserId2, cancellationToken) ?? "Unknown";
+        await _publisher.Publish(new TaskChangedNotification
+        {
+            EventType = eventType,
+            Task = dto,
+            TaskId = task.Id,
+            TaskTitle = task.Title,
+            ProjectId = command.ProjectId,
+            ActorUserId = currentUserId2,
+            ActorName = actorName,
+            OldAssigneeId = oldAssigneeId,
+            NewAssigneeId = assigneeId,
+            OldStatus = oldStatus,
+            NewStatus = (int)command.Status,
+            ChangedFields = changedFields,
+        }, cancellationToken);
+
+        return dto;
+    }
+
+    private static IReadOnlyList<TaskFieldChange> BuildChangedFields(
+        UpdateTaskCommand command,
+        string oldTitle,
+        string? oldDescription,
+        int oldStatus,
+        TaskPriority oldPriority,
+        Guid? oldEpicId,
+        Guid? oldSprintId,
+        DateOnly? oldStartDate,
+        DateOnly? oldEndDate)
+    {
+        var changedFields = new List<TaskFieldChange>();
+
+        if (!string.Equals(oldTitle, command.Title, StringComparison.Ordinal))
+        {
+            changedFields.Add(new TaskFieldChange
+            {
+                FieldName = "Title",
+                OldValue = oldTitle,
+                NewValue = command.Title,
+            });
+        }
+
+        if (!string.Equals(oldDescription, command.Description, StringComparison.Ordinal))
+        {
+            changedFields.Add(new TaskFieldChange
+            {
+                FieldName = "Description",
+                OldValue = oldDescription,
+                NewValue = command.Description,
+            });
+        }
+
+        if (oldStatus != (int)command.Status)
+        {
+            changedFields.Add(new TaskFieldChange
+            {
+                FieldName = "Status",
+                OldValue = FormatStatusLabel(oldStatus),
+                NewValue = FormatStatusLabel((int)command.Status),
+            });
+        }
+
+        if (oldPriority != command.Priority)
+        {
+            changedFields.Add(new TaskFieldChange
+            {
+                FieldName = "Priority",
+                OldValue = oldPriority.ToString(),
+                NewValue = command.Priority.ToString(),
+            });
+        }
+
+        if (oldEpicId != command.EpicId)
+        {
+            changedFields.Add(new TaskFieldChange
+            {
+                FieldName = "Epic",
+                OldValue = oldEpicId?.ToString(),
+                NewValue = command.EpicId?.ToString(),
+            });
+        }
+
+        if (oldSprintId != command.SprintId)
+        {
+            changedFields.Add(new TaskFieldChange
+            {
+                FieldName = "Sprint",
+                OldValue = oldSprintId?.ToString(),
+                NewValue = command.SprintId?.ToString(),
+            });
+        }
+
+        if (oldStartDate != command.StartDate)
+        {
+            changedFields.Add(new TaskFieldChange
+            {
+                FieldName = "StartDate",
+                OldValue = oldStartDate?.ToString(),
+                NewValue = command.StartDate?.ToString(),
+            });
+        }
+
+        if (oldEndDate != command.EndDate)
+        {
+            changedFields.Add(new TaskFieldChange
+            {
+                FieldName = "EndDate",
+                OldValue = oldEndDate?.ToString(),
+                NewValue = command.EndDate?.ToString(),
+            });
+        }
+
+        return changedFields;
+    }
+
+    private static string FormatStatusLabel(int statusValue)
+    {
+        return statusValue switch
+        {
+            (int)Status.NotStarted => "Not Started",
+            (int)Status.InProgress => "In Progress",
+            (int)Status.Completed => "Completed",
+            (int)Status.OnHold => "On Hold",
+            (int)Status.Cancelled => "Cancelled",
+            _ => statusValue.ToString(),
+        };
     }
 }

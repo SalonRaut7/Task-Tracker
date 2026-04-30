@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -33,6 +34,16 @@ import { getMyPermissions } from "../services/memberService";
 import {
   updateCurrentUserProfile as updateCurrentUserProfileRequest,
 } from "../services/userService";
+import {
+  fetchNotifications as fetchNotificationsRequest,
+  markNotificationRead as markNotificationReadRequest,
+  markAllNotificationsRead as markAllNotificationsReadRequest,
+} from "../services/notificationService";
+import {
+  startConnection,
+  stopConnection,
+  buildConnection,
+} from "../services/signalRService";
 import type {
   AppNotification,
   AppUser,
@@ -45,7 +56,6 @@ import type {
 } from "../types/app";
 import type { UserPermissions, ScopeType } from "../types/invitation";
 import type { CreateTaskDto, TaskDto, UpdateTaskDto } from "../types/task";
-import { dateOnlyToIso, isTaskCompleted } from "../utils/taskPresentation";
 
 interface AppContextValue {
   user: AppUser | null;
@@ -64,6 +74,7 @@ interface AppContextValue {
   projectsApiAvailable: boolean;
   projectsApiMessage: string;
   notifications: AppNotification[];
+  toastNotification: AppNotification | null;
   theme: ThemeMode;
   sidebarCollapsed: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -88,13 +99,13 @@ interface AppContextValue {
   deleteTask: (taskId: number, projectId: string) => Promise<void>;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
+  dismissToast: () => void;
 }
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 const THEME_KEY = "tasktracker-theme";
 const SIDEBAR_KEY = "tasktracker-sidebar";
-const READ_NOTIFICATION_IDS_KEY = "tasktracker-read-notifications";
 
 function toAppUser(raw: unknown): AppUser | null {
   if (!raw || typeof raw !== "object") {
@@ -124,79 +135,6 @@ function toAppUser(raw: unknown): AppUser | null {
   };
 }
 
-function buildNotifications(tasks: TaskDto[]): AppNotification[] {
-  const now = new Date();
-  const dayMs = 24 * 60 * 60 * 1000;
-
-  const derived = tasks
-    .flatMap((task): AppNotification[] => {
-      const entries: AppNotification[] = [];
-
-      if (task.endDate) {
-        const dueDate = new Date(dateOnlyToIso(task.endDate));
-        const diff = dueDate.getTime() - now.getTime();
-
-        if (!isTaskCompleted(task) && diff < 0) {
-          entries.push({
-            id: `overdue-${task.id}`,
-            title: "Task overdue",
-            message: `Task ${task.title || `#${task.id}`} is past its end date.`,
-            createdAt: task.updatedAt,
-            type: "warning",
-            read: false,
-          });
-        }
-
-        if (!isTaskCompleted(task) && diff >= 0 && diff <= dayMs) {
-          entries.push({
-            id: `due-soon-${task.id}`,
-            title: "Task due soon",
-            message: `Task ${task.title || `#${task.id}`} is due within 24 hours.`,
-            createdAt: task.updatedAt,
-            type: "info",
-            read: false,
-          });
-        }
-      }
-
-      if (isTaskCompleted(task)) {
-        entries.push({
-          id: `completed-${task.id}`,
-          title: "Task completed",
-          message: `Task ${task.title || `#${task.id}`} is marked as completed.`,
-          createdAt: task.updatedAt,
-          type: "success",
-          read: false,
-        });
-      }
-
-      return entries;
-    })
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )
-    .slice(0, 10);
-
-  const rawReadIds = localStorage.getItem(READ_NOTIFICATION_IDS_KEY);
-  const readIds = new Set(
-    rawReadIds ? (JSON.parse(rawReadIds) as string[]) : []
-  );
-
-  return derived.map((item) => ({
-    ...item,
-    read: readIds.has(item.id),
-  }));
-}
-
-function saveReadNotificationIds(notifications: AppNotification[]): void {
-  const readIds = notifications
-    .filter((item) => item.read)
-    .map((item) => item.id);
-
-  localStorage.setItem(READ_NOTIFICATION_IDS_KEY, JSON.stringify(readIds));
-}
-
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [userPermissions, setUserPermissions] =
@@ -210,14 +148,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [projectsApiAvailable, setProjectsApiAvailable] = useState(true);
   const [projectsApiMessage, setProjectsApiMessage] = useState("");
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [toastNotification, setToastNotification] =
+    useState<AppNotification | null>(null);
   const [theme, setTheme] = useState<ThemeMode>("light");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const signalRSetupRef = useRef(false);
+
+  // ── Toast management ──────────────────────────────────────────
+  const showToast = useCallback((notification: AppNotification) => {
+    setToastNotification(notification);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setToastNotification(null);
+    }, 5000);
+  }, []);
+
+  const dismissToast = useCallback(() => {
+    setToastNotification(null);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
+
   /**
    * Scoped permission check.
-   * SuperAdmin → always true.
-   * If scopeType/scopeId provided → checks that specific scope.
-   * If no scope → checks if permission exists in ANY scope.
    */
   const hasPermission = useCallback(
     (
@@ -228,7 +182,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!userPermissions) return false;
       if (userPermissions.isSuperAdmin) return true;
 
-      // Check specific scope
       if (scopeType && scopeId) {
         if (scopeType === "Organization") {
           const orgRole = userPermissions.organizationRoles.find(
@@ -242,8 +195,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           );
           if (projRole?.permissions.includes(permission)) return true;
 
-          // Fall back to org role. If no direct project membership exists,
-          // resolve organization from loaded projects.
           const organizationId =
             projRole?.organizationId ??
             projects.find((project) => project.id === scopeId)?.organizationId;
@@ -259,7 +210,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // No scope specified — check if permission exists in ANY scope
       const inAnyOrg = userPermissions.organizationRoles.some((r) =>
         r.permissions.includes(permission)
       );
@@ -283,7 +233,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const perms = await getMyPermissions();
       setUserPermissions(perms);
     } catch {
-      // Silently fail — permissions will be stale until next refresh
+      // Silently fail
     } finally {
       setPermissionsLoaded(true);
     }
@@ -314,6 +264,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user]
   );
 
+  // ── Bootstrap ──────────────────────────────────────────────────
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_KEY) as ThemeMode | null;
     const resolvedTheme =
@@ -348,6 +299,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBootstrapping(false);
   }, []);
 
+  // ── Session teardown ───────────────────────────────────────────
   const clearSession = useCallback(async (callLogoutEndpoint = true) => {
     if (callLogoutEndpoint) {
       const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
@@ -355,10 +307,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         try {
           await logoutRequest(refreshToken);
         } catch {
-          // Ignore API logout failures and clear local session anyway.
+          // Ignore
         }
       }
     }
+
+    // Stop SignalR
+    await stopConnection();
+    signalRSetupRef.current = false;
 
     setIsAuthenticated(false);
     setUser(null);
@@ -367,10 +323,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTasks([]);
     setProjects([]);
     setNotifications([]);
+    setToastNotification(null);
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(READ_NOTIFICATION_IDS_KEY);
   }, []);
 
   useEffect(() => {
@@ -384,6 +340,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [clearSession]);
 
+  // ── Data loading ───────────────────────────────────────────────
   const refreshWorkspaceData = useCallback(
     async (options?: { includeTasks?: boolean }) => {
       if (!localStorage.getItem(ACCESS_TOKEN_KEY)) {
@@ -404,7 +361,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (taskResponse) {
           setTasks(taskResponse.data);
-          setNotifications(buildNotifications(taskResponse.data));
         }
 
         setProjects(projectResponse.items);
@@ -435,6 +391,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [clearSession]
   );
 
+  // ── SignalR setup ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!isAuthenticated || signalRSetupRef.current) return;
+    signalRSetupRef.current = true;
+
+    const setupSignalR = async () => {
+      try {
+        // Fetch initial notifications from REST API
+        const initialNotifications = await fetchNotificationsRequest(50);
+        setNotifications(initialNotifications);
+      } catch {
+        // Silently fail — notifications will start arriving via SignalR
+      }
+
+      // Start SignalR connection
+      const conn = buildConnection();
+
+      // Register event handlers
+      conn.on("ReceiveNotification", (notification: AppNotification) => {
+        setNotifications((prev) => [notification, ...prev].slice(0, 100));
+        showToast(notification);
+      });
+
+      conn.on("TaskCreated", (task: TaskDto) => {
+        setTasks((prev) => [task, ...prev]);
+      });
+
+      conn.on("TaskUpdated", (task: TaskDto) => {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === task.id ? task : t))
+        );
+      });
+
+      conn.on("TaskDeleted", (taskId: number) => {
+        setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      });
+
+      conn.on("ScopeMembersChanged", () => {
+        void refreshPermissions();
+        void refreshWorkspaceData({ includeTasks: false });
+      });
+
+      conn.on("UserWorkspaceChanged", () => {
+        void refreshPermissions();
+        void refreshWorkspaceData({ includeTasks: false });
+      });
+
+      conn.onreconnected(() => {
+        console.log("[SignalR] Reconnected — refreshing data");
+        void refreshWorkspaceData();
+      });
+
+      await startConnection();
+    };
+
+    void setupSignalR();
+
+    return () => {
+      // Cleanup on unmount (not on re-render)
+    };
+  }, [isAuthenticated, refreshPermissions, refreshWorkspaceData, showToast]);
+
   // Fetch permissions and workspace data when authenticated
   useEffect(() => {
     if (isAuthenticated) {
@@ -443,6 +461,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [isAuthenticated, refreshPermissions, refreshWorkspaceData]);
 
+  // ── Auth actions ───────────────────────────────────────────────
   const login = async (email: string, password: string): Promise<void> => {
     const auth = await loginRequest(email.trim(), password);
 
@@ -457,6 +476,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setUser(nextUser);
     setPermissionsLoaded(false);
+    signalRSetupRef.current = false; // Allow re-setup
     setIsAuthenticated(true);
   };
 
@@ -502,13 +522,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // ── Task CRUD ──────────────────────────────────────────────────
   const addTask = async (taskInput: CreateTaskDto): Promise<TaskDto> => {
     const created = await createTaskRequest(taskInput);
-    setTasks((prev) => {
-      const next = [created, ...prev];
-      setNotifications(buildNotifications(next));
-      return next;
-    });
+    setTasks((prev) => [created, ...prev]);
     return created;
   };
 
@@ -518,11 +535,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updates: UpdateTaskDto
   ): Promise<TaskDto> => {
     const updated = await updateTaskRequest(taskId, projectId, updates);
-    setTasks((prev) => {
-      const next = prev.map((task) => (task.id === taskId ? updated : task));
-      setNotifications(buildNotifications(next));
-      return next;
-    });
+    setTasks((prev) =>
+      prev.map((task) => (task.id === taskId ? updated : task))
+    );
     return updated;
   };
 
@@ -531,29 +546,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     projectId: string
   ): Promise<void> => {
     await deleteTaskRequest(taskId, projectId);
-    setTasks((prev) => {
-      const next = prev.filter((task) => task.id !== taskId);
-      setNotifications(buildNotifications(next));
-      return next;
-    });
+    setTasks((prev) => prev.filter((task) => task.id !== taskId));
   };
 
+  // ── Notification actions ───────────────────────────────────────
   const markNotificationRead = (id: string) => {
-    setNotifications((prev) => {
-      const next = prev.map((item) =>
-        item.id === id ? { ...item, read: true } : item
-      );
-      saveReadNotificationIds(next);
-      return next;
-    });
+    setNotifications((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, isRead: true } : item
+      )
+    );
+    // Fire-and-forget REST call
+    void markNotificationReadRequest(id).catch(() => undefined);
   };
 
   const markAllNotificationsRead = () => {
-    setNotifications((prev) => {
-      const next = prev.map((item) => ({ ...item, read: true }));
-      saveReadNotificationIds(next);
-      return next;
-    });
+    setNotifications((prev) =>
+      prev.map((item) => ({ ...item, isRead: true }))
+    );
+    void markAllNotificationsReadRequest().catch(() => undefined);
   };
 
   const value = useMemo<AppContextValue>(
@@ -570,6 +581,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       projectsApiAvailable,
       projectsApiMessage,
       notifications,
+      toastNotification,
       theme,
       sidebarCollapsed,
       login,
@@ -587,6 +599,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteTask,
       markNotificationRead,
       markAllNotificationsRead,
+      dismissToast,
     }),
     [
       user,
@@ -601,11 +614,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       projectsApiAvailable,
       projectsApiMessage,
       notifications,
+      toastNotification,
       theme,
       sidebarCollapsed,
       refreshWorkspaceData,
       refreshPermissions,
       updateCurrentUserProfile,
+      dismissToast,
     ]
   );
 

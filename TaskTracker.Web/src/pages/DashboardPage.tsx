@@ -7,11 +7,24 @@ import Chart, {
   ValueAxis,
 } from "devextreme-react/chart";
 import { PieChart, Series as PieSeries } from "devextreme-react/pie-chart";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { Status } from "../types/task";
 import { priorityLabel, statusLabel, taskKey } from "../utils/taskPresentation";
 import { formatDistanceToNow } from "../utils/time";
+
+const ACTIVITY_ICON: Record<string, string> = {
+  TaskCreated: "add",
+  TaskUpdated: "edit",
+  TaskDeleted: "trash",
+  TaskReassigned: "user",
+  TaskDueSoon: "clock",
+  TaskOverdue: "warning",
+  ProjectUpdated: "edit",
+  ProjectDeleted: "trash",
+  OrganizationUpdated: "edit",
+  OrganizationDeleted: "trash",
+};
 
 function normalizeDay(date: string): string {
   return new Date(date).toLocaleDateString(undefined, {
@@ -21,7 +34,8 @@ function normalizeDay(date: string): string {
 }
 
 export function DashboardPage() {
-  const { tasks, user, loadingData } = useApp();
+  const { tasks, notifications, user, loadingData } = useApp();
+  const navigate = useNavigate();
 
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((item) => item.status === Status.Completed).length;
@@ -39,6 +53,9 @@ export function DashboardPage() {
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     )
     .slice(0, 5);
+
+  // Use notifications as the activity feed (last 10)
+  const recentActivity = notifications.slice(0, 10);
 
   const trendMap = new Map<string, { day: string; created: number; done: number }>();
   for (const task of tasks) {
@@ -121,18 +138,35 @@ export function DashboardPage() {
         <article className="card">
           <div className="card-head">
             <h2>Recent Activity</h2>
+            <span className="live-badge">● Live</span>
           </div>
           <div className="activity-list">
-            {recentTasks.map((task) => (
-              <div key={task.id} className="activity-item">
-                <div>
-                  <strong>{task.title || taskKey(task)}</strong> moved to{" "}
-                  <em>{statusLabel(task.status)}</em>
+            {recentActivity.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="activity-item"
+                onClick={() => {
+                  if (item.taskId && item.projectId) {
+                    navigate(`/tasks/${item.projectId}/${item.taskId}`);
+                  }
+                }}
+              >
+                <div className="activity-icon">
+                  <i
+                    className={`dx-icon dx-icon-${ACTIVITY_ICON[item.type] ?? "info"}`}
+                    aria-hidden="true"
+                  />
                 </div>
-                <small>{formatDistanceToNow(task.updatedAt)}</small>
-              </div>
+                <div className="activity-content">
+                  <div className="activity-message">{item.message}</div>
+                  <small>{formatDistanceToNow(item.createdAt)}</small>
+                </div>
+              </button>
             ))}
-            {recentTasks.length === 0 && <p>No recent task activity.</p>}
+            {recentActivity.length === 0 && (
+              <p className="activity-empty">No recent activity. Task events will appear here in real time.</p>
+            )}
           </div>
         </article>
 

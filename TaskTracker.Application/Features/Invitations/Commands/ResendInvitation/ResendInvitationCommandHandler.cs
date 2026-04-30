@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Options;
+using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities.Identity;
 using TaskTracker.Domain.Enums;
@@ -22,6 +23,7 @@ public sealed class ResendInvitationCommandHandler : IRequestHandler<ResendInvit
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ICurrentUserService _currentUser;
     private readonly IPermissionEvaluator _permissionEvaluator;
+    private readonly INotificationPushService _pushService;
     private readonly InviteOptions _inviteOptions;
 
     public ResendInvitationCommandHandler(
@@ -33,6 +35,7 @@ public sealed class ResendInvitationCommandHandler : IRequestHandler<ResendInvit
         UserManager<ApplicationUser> userManager,
         ICurrentUserService currentUser,
         IPermissionEvaluator permissionEvaluator,
+        INotificationPushService pushService,
         IOptions<InviteOptions> inviteOptions)
     {
         _invitationRepository = invitationRepository;
@@ -43,6 +46,7 @@ public sealed class ResendInvitationCommandHandler : IRequestHandler<ResendInvit
         _userManager = userManager;
         _currentUser = currentUser;
         _permissionEvaluator = permissionEvaluator;
+        _pushService = pushService;
         _inviteOptions = inviteOptions.Value;
     }
 
@@ -98,6 +102,8 @@ public sealed class ResendInvitationCommandHandler : IRequestHandler<ResendInvit
 
         await _emailSender.SendInviteAsync(
             invitation.InviteeEmail, inviterName, scopeName, invitation.Role, inviteLink, cancellationToken);
+
+        await _pushService.BroadcastScopeMembersChangedAsync(invitation.ScopeType, invitation.ScopeId, cancellationToken);
 
         return new InvitationDto
         {
