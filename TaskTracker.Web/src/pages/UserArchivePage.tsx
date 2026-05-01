@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "devextreme-react/button";
-import DataGrid, { Column, Paging } from "devextreme-react/data-grid";
+import DataGrid, { Column } from "devextreme-react/data-grid";
 import TextBox from "devextreme-react/text-box";
 import { Modal } from "../components/Modal";
+import { PaginationControls } from "../components/PaginationControls";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { usePagination } from "../hooks/usePagination";
 import {
-  getArchivedUsers,
   getUserDetails,
+  loadArchivedUsers,
   permanentlyDeleteUser,
   restoreUser,
 } from "../services/userService";
@@ -27,46 +30,51 @@ export function UserArchivePage() {
 
   const [users, setUsers] = useState<BackendUserSummary[]>([]);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 250);
   const [loading, setLoading] = useState(false);
   const [pageError, setPageError] = useState("");
+  const [totalCount, setTotalCount] = useState(0);
+  const [reloadTick, setReloadTick] = useState(0);
+
+  const { page, pageSize, skip, setPage, setPageSize, resetPage } = usePagination({
+    totalCount,
+    initialPageSize: 10,
+  });
 
   const [selectedUser, setSelectedUser] = useState<BackendUserSummary | null>(null);
   const [userDetails, setUserDetails] = useState<BackendUserDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
 
-  const filteredUsers = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (!term) {
-      return users;
-    }
+  useEffect(() => {
+    resetPage();
+  }, [debouncedQuery, resetPage]);
 
-    return users.filter((user) => {
-      const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
-      return (
-        fullName.includes(term) ||
-        user.email.toLowerCase().includes(term)
-      );
-    });
-  }, [query, users]);
-
-  const loadUsers = useCallback(async () => {
+  const loadUsersPage = useCallback(async () => {
     setLoading(true);
     setPageError("");
 
     try {
-      const result = await getArchivedUsers();
-      setUsers(result);
+      const result = await loadArchivedUsers({
+        search: debouncedQuery.trim() || undefined,
+        skip,
+        take: pageSize,
+      });
+
+      setUsers(result.data);
+      setTotalCount(result.totalCount);
     } catch (error) {
+      setUsers([]);
+      setTotalCount(0);
       setPageError(getErrorMessage(error, "Failed to load archived users."));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [debouncedQuery, pageSize, skip]);
 
   useEffect(() => {
-    void loadUsers();
-  }, [loadUsers]);
+    void loadUsersPage();
+  }, [loadUsersPage, reloadTick]);
 
   const closeDetails = useCallback(() => {
     setSelectedUser(null);
@@ -97,7 +105,7 @@ export function UserArchivePage() {
   }, []);
 
   const handleRestore = useCallback(async (user: BackendUserSummary) => {
-    const confirmed = window.confirm(`Restore user \"${user.firstName} ${user.lastName}\"?`);
+    const confirmed = window.confirm(`Restore user "${user.firstName} ${user.lastName}"?`);
     if (!confirmed) {
       return;
     }
@@ -106,11 +114,12 @@ export function UserArchivePage() {
 
     try {
       await restoreUser(user.userId);
-      setUsers((previous) => previous.filter((entry) => entry.userId !== user.userId));
 
       if (selectedUser?.userId === user.userId) {
         closeDetails();
       }
+
+      setReloadTick((value) => value + 1);
     } catch (error) {
       setPageError(getErrorMessage(error, "Failed to restore user."));
     }
@@ -118,7 +127,7 @@ export function UserArchivePage() {
 
   const handlePermanentDelete = useCallback(async (user: BackendUserSummary) => {
     const confirmed = window.confirm(
-      `Permanently delete user \"${user.firstName} ${user.lastName}\"? This action cannot be undone.`
+      `Permanently delete user "${user.firstName} ${user.lastName}"? This action cannot be undone.`
     );
 
     if (!confirmed) {
@@ -134,11 +143,12 @@ export function UserArchivePage() {
 
     try {
       await permanentlyDeleteUser(user.userId);
-      setUsers((previous) => previous.filter((entry) => entry.userId !== user.userId));
 
       if (selectedUser?.userId === user.userId) {
         closeDetails();
       }
+
+      setReloadTick((value) => value + 1);
     } catch (error) {
       setPageError(getErrorMessage(error, "Failed to permanently delete user."));
     }
@@ -176,7 +186,7 @@ export function UserArchivePage() {
 
       <section className="card">
         <DataGrid
-          dataSource={filteredUsers}
+          dataSource={users}
           keyExpr="userId"
           showBorders={false}
           rowAlternationEnabled
@@ -249,8 +259,16 @@ export function UserArchivePage() {
               </div>
             )}
           />
-          <Paging enabled pageSize={10} />
         </DataGrid>
+
+        <PaginationControls
+          page={page}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          loading={loading}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
       </section>
 
       <Modal

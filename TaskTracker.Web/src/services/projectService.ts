@@ -1,5 +1,11 @@
-import { ApiError, apiRequest } from "./apiClient";
 import type { BackendProject } from "../types/app";
+import { ApiError, apiRequest } from "./apiClient";
+import {
+  appendPagingParams,
+  normalizePagedResponse,
+  type PagedResponse,
+  type PagingOptions,
+} from "./pagedResponse";
 
 export interface CreateProjectPayload {
   organizationId: string;
@@ -14,28 +20,52 @@ export interface UpdateProjectPayload {
   description?: string;
 }
 
-interface ProjectListResult {
-  items: BackendProject[];
+export interface ProjectQueryOptions extends PagingOptions {
+  organizationId?: string;
+  search?: string;
+}
+
+interface ProjectListResult extends PagedResponse<BackendProject> {
   available: boolean;
   message?: string;
 }
 
-export async function getProjects(): Promise<ProjectListResult> {
+export async function getProjects(
+  options: ProjectQueryOptions = {}
+): Promise<ProjectListResult> {
   try {
-    const raw = await apiRequest<unknown[]>("/api/Projects", {
+    const params = new URLSearchParams();
+
+    if (options.organizationId?.trim()) {
+      params.set("OrganizationId", options.organizationId.trim());
+    }
+
+    if (options.search?.trim()) {
+      params.set("Search", options.search.trim());
+    }
+
+    appendPagingParams(params, options);
+
+    const endpoint = params.toString()
+      ? `/api/Projects?${params.toString()}`
+      : "/api/Projects";
+
+    const raw = await apiRequest<unknown>(endpoint, {
       method: "GET",
       requiresAuth: true,
     });
 
-    const items = (raw ?? [])
-      .map((item) => normalizeProject(item))
-      .filter((item): item is BackendProject => item !== null);
+    const paged = normalizePagedResponse(raw, normalizeProject);
 
-    return { items, available: true };
+    return {
+      ...paged,
+      available: true,
+    };
   } catch (error) {
     if (error instanceof ApiError && error.status === 403) {
       return {
-        items: [],
+        data: [],
+        totalCount: 0,
         available: false,
         message: "You do not have permission to view projects.",
       };
@@ -43,7 +73,8 @@ export async function getProjects(): Promise<ProjectListResult> {
 
     if (error instanceof ApiError && error.status === 404) {
       return {
-        items: [],
+        data: [],
+        totalCount: 0,
         available: false,
         message: "Projects endpoint is not available in the current backend.",
       };

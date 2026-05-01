@@ -5,7 +5,7 @@ using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Users.Queries.GetArchivedUsers;
 
-public sealed class GetArchivedUsersQueryHandler : IRequestHandler<GetArchivedUsersQuery, IReadOnlyList<UserSummaryDto>>
+public sealed class GetArchivedUsersQueryHandler : IRequestHandler<GetArchivedUsersQuery, PagedResultDto<UserSummaryDto>>
 {
     private readonly IUserRepository _userRepository;
     private readonly ICurrentUserService _currentUser;
@@ -16,13 +16,18 @@ public sealed class GetArchivedUsersQueryHandler : IRequestHandler<GetArchivedUs
         _currentUser = currentUser;
     }
 
-    public async Task<IReadOnlyList<UserSummaryDto>> Handle(GetArchivedUsersQuery request, CancellationToken cancellationToken)
+    public async Task<PagedResultDto<UserSummaryDto>> Handle(GetArchivedUsersQuery request, CancellationToken cancellationToken)
     {
         EnsureSuperAdmin();
 
-        var users = await _userRepository.GetUserSummariesAsync(archived: true, cancellationToken);
+        var summaryResult = await _userRepository.GetUserSummariesAsync(
+            archived: true,
+            search: request.Search,
+            skip: request.Skip,
+            take: request.Take,
+            cancellationToken: cancellationToken);
 
-        return users
+        var data = summaryResult.Users
             .Select(user => new UserSummaryDto
             {
                 UserId = user.UserId,
@@ -43,6 +48,12 @@ public sealed class GetArchivedUsersQueryHandler : IRequestHandler<GetArchivedUs
                 ReportedTaskCount = user.ReportedTaskCount,
             })
             .ToList();
+
+        return new PagedResultDto<UserSummaryDto>
+        {
+            Data = data,
+            TotalCount = summaryResult.TotalCount
+        };
     }
 
     private void EnsureSuperAdmin()

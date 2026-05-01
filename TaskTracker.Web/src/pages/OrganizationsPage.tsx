@@ -1,16 +1,19 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Button } from "devextreme-react/button";
-import DataGrid, { Column, Paging } from "devextreme-react/data-grid";
+import DataGrid, { Column } from "devextreme-react/data-grid";
 import TextArea from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
 import { useNavigate } from "react-router-dom";
 import { Modal } from "../components/Modal";
+import { PaginationControls } from "../components/PaginationControls";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { usePagination } from "../hooks/usePagination";
 import { useApp } from "../context/AppContext";
 import { AppPermissions } from "../security/permissions";
 import {
   createOrganization,
   deleteOrganization,
-  getOrganizations,
+  loadOrganizations,
   updateOrganization,
 } from "../services/organizationService";
 import type { BackendOrganization } from "../types/app";
@@ -50,10 +53,18 @@ export function OrganizationsPage() {
 
   const [organizations, setOrganizations] = useState<BackendOrganization[]>([]);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 250);
+  const [totalCount, setTotalCount] = useState(0);
+  const { page, pageSize, skip, setPage, setPageSize, resetPage } = usePagination({
+    totalCount,
+    initialPageSize: 10,
+  });
+
   const [loading, setLoading] = useState(false);
   const [pageError, setPageError] = useState("");
   const [createError, setCreateError] = useState("");
   const [editError, setEditError] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState<OrganizationForm>(emptyForm);
@@ -62,40 +73,34 @@ export function OrganizationsPage() {
   const [popupMode, setPopupMode] = useState<PopupMode>(null);
   const [editForm, setEditForm] = useState<OrganizationForm>(emptyForm);
 
-  const filteredOrganizations = useMemo(() => {
-    const term = query.trim().toLowerCase();
+  useEffect(() => {
+    resetPage();
+  }, [debouncedQuery, resetPage]);
 
-    if (!term) {
-      return organizations;
-    }
-
-    return organizations.filter((organization) => {
-      const description = organization.description ?? "";
-      return (
-        organization.name.toLowerCase().includes(term) ||
-        organization.slug.toLowerCase().includes(term) ||
-        description.toLowerCase().includes(term)
-      );
-    });
-  }, [organizations, query]);
-
-  const loadOrganizations = useCallback(async () => {
+  const loadOrganizationsPage = useCallback(async () => {
     setLoading(true);
     setPageError("");
 
     try {
-      const result = await getOrganizations();
-      setOrganizations(result);
+      const result = await loadOrganizations({
+        search: debouncedQuery.trim() || undefined,
+        skip,
+        take: pageSize,
+      });
+      setOrganizations(result.data);
+      setTotalCount(result.totalCount);
     } catch (error) {
+      setOrganizations([]);
+      setTotalCount(0);
       setPageError(getErrorMessage(error, "Failed to load organizations."));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [debouncedQuery, pageSize, skip]);
 
   useEffect(() => {
-    void loadOrganizations();
-  }, [loadOrganizations]);
+    void loadOrganizationsPage();
+  }, [loadOrganizationsPage, reloadTick]);
 
   const openOrganization = useCallback((organization: BackendOrganization, mode: PopupMode) => {
     setSelectedOrganization(organization);
@@ -141,14 +146,14 @@ export function OrganizationsPage() {
       }
 
       try {
-        const created = await createOrganization({
+        await createOrganization({
           name: createForm.name.trim(),
           slug: createForm.slug.trim(),
           description: createForm.description.trim() || undefined,
         });
 
-        setOrganizations((prev) => [created, ...prev]);
         closeCreatePopup();
+        setReloadTick((value) => value + 1);
       } catch (error) {
         setCreateError(getErrorMessage(error, "Failed to create organization."));
       }
@@ -185,10 +190,6 @@ export function OrganizationsPage() {
         description: editForm.description.trim() || undefined,
       });
 
-      setOrganizations((prev) =>
-        prev.map((item) => (item.id === updated.id ? updated : item))
-      );
-
       setSelectedOrganization(updated);
       setEditForm({
         name: updated.name,
@@ -196,6 +197,7 @@ export function OrganizationsPage() {
         description: updated.description ?? "",
       });
       setPopupMode("view");
+      setReloadTick((value) => value + 1);
     } catch (error) {
       setEditError(getErrorMessage(error, "Failed to update organization."));
     }
@@ -217,11 +219,12 @@ export function OrganizationsPage() {
 
       try {
         await deleteOrganization(organization.id);
-        setOrganizations((prev) => prev.filter((item) => item.id !== organization.id));
 
         if (selectedOrganization?.id === organization.id) {
           closeDetailsPopup();
         }
+
+        setReloadTick((value) => value + 1);
       } catch (error) {
         setPageError(getErrorMessage(error, "Failed to delete organization."));
       }
@@ -265,7 +268,7 @@ export function OrganizationsPage() {
 
       <section className="card">
         <DataGrid
-          dataSource={filteredOrganizations}
+          dataSource={organizations}
           keyExpr="id"
           showBorders={false}
           rowAlternationEnabled
@@ -346,8 +349,16 @@ export function OrganizationsPage() {
               </div>
             )}
           />
-          <Paging enabled pageSize={10} />
         </DataGrid>
+
+        <PaginationControls
+          page={page}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          loading={loading}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
       </section>
 
       <Modal
@@ -480,7 +491,6 @@ export function OrganizationsPage() {
                     text="Cancel"
                     stylingMode="outlined"
                     onClick={() => {
-                      // cancel = close popup
                       closeDetailsPopup();
                     }}
                   />

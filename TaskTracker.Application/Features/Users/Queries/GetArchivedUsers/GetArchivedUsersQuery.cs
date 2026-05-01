@@ -5,8 +5,12 @@ using TaskTracker.Domain.Constants;
 
 namespace TaskTracker.Application.Features.Users.Queries.GetArchivedUsers;
 
-public sealed class GetArchivedUsersQuery : IRequest<IReadOnlyList<UserSummaryDto>>, IAuthorizedRequest
+public sealed class GetArchivedUsersQuery : IRequest<PagedResultDto<UserSummaryDto>>, IAuthorizedRequest
 {
+    public string? Search { get; set; }
+    public int? Skip { get; set; }
+    public int? Take { get; set; }
+
     public string RequiredPermission => AppPermissions.UsersView;
     public IReadOnlyList<ResourceScope> Scopes => [];
 }

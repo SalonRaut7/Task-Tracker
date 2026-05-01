@@ -24,16 +24,16 @@ public sealed class UsersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<UserSummaryDto>>> GetUsers(CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResultDto<UserSummaryDto>>> GetUsers([FromQuery] GetUsersQuery query, CancellationToken cancellationToken)
     {
-        var users = await _mediator.Send(new GetUsersQuery(), cancellationToken);
+        var users = await _mediator.Send(query, cancellationToken);
         return Ok(users);
     }
 
     [HttpGet("archive")]
-    public async Task<ActionResult<IReadOnlyList<UserSummaryDto>>> GetArchivedUsers(CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResultDto<UserSummaryDto>>> GetArchivedUsers([FromQuery] GetArchivedUsersQuery query, CancellationToken cancellationToken)
     {
-        var users = await _mediator.Send(new GetArchivedUsersQuery(), cancellationToken);
+        var users = await _mediator.Send(query, cancellationToken);
         return Ok(users);
     }
 

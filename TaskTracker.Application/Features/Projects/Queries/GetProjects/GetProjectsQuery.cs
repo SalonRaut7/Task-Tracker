@@ -5,9 +5,12 @@ using TaskTracker.Domain.Constants;
 
 namespace TaskTracker.Application.Features.Projects.Queries.GetProjects;
 
-public sealed class GetProjectsQuery : IRequest<IReadOnlyList<ProjectDto>>, IAuthorizedRequest
+public sealed class GetProjectsQuery : IRequest<PagedResultDto<ProjectDto>>, IAuthorizedRequest
 {
     public Guid? OrganizationId { get; set; }
+    public string? Search { get; set; }
+    public int? Skip { get; set; }
+    public int? Take { get; set; }
 
     public string RequiredPermission => AppPermissions.ProjectsView;
     public IReadOnlyList<ResourceScope> Scopes =>

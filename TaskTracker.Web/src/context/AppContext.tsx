@@ -363,7 +363,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setTasks(taskResponse.data);
         }
 
-        setProjects(projectResponse.items);
+        setProjects(projectResponse.data);
         setProjectsApiAvailable(projectResponse.available);
         setProjectsApiMessage(projectResponse.message ?? "");
       } catch (error) {

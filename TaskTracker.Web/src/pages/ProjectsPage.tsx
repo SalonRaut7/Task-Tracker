@@ -1,15 +1,18 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "devextreme-react/button";
-import DataGrid, { Column, Paging } from "devextreme-react/data-grid";
+import DataGrid, { Column } from "devextreme-react/data-grid";
 import SelectBox from "devextreme-react/select-box";
 import TextArea from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
 import { Modal } from "../components/Modal";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
+import { PaginationControls } from "../components/PaginationControls";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { usePagination } from "../hooks/usePagination";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import { getOrganizations } from "../services/organizationService";
-import { createProject, deleteProject, updateProject } from "../services/projectService";
+import { createProject, deleteProject, getProjects, updateProject } from "../services/projectService";
 import { AppPermissions } from "../security/permissions";
 import type { BackendOrganization, BackendProject } from "../types/app";
 
@@ -31,16 +34,25 @@ const emptyCreateForm: ProjectCreateForm = {
 
 export function ProjectsPage() {
   const navigate = useNavigate();
-  const {
-    projects,
-    loadingData,
-    projectsApiAvailable,
-    projectsApiMessage,
-    hasPermission,
-    refreshWorkspaceData,
-  } = useApp();
+  const { loadingData, hasPermission, refreshWorkspaceData } = useApp();
+
+  const canCreateProject = hasPermission(AppPermissions.ProjectsCreate);
 
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 250);
+
+  const [totalCount, setTotalCount] = useState(0);
+  const { page, pageSize, skip, setPage, setPageSize, resetPage } = usePagination({
+    totalCount,
+    initialPageSize: 10,
+  });
+
+  const [projects, setProjects] = useState<BackendProject[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsApiAvailable, setProjectsApiAvailable] = useState(true);
+  const [projectsApiMessage, setProjectsApiMessage] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
+
   const [showCreatePopup, setShowCreatePopup] = useState(false);
 
   const [organizations, setOrganizations] = useState<BackendOrganization[]>([]);
@@ -58,9 +70,55 @@ export function ProjectsPage() {
   const [editForm, setEditForm] = useState<ProjectCreateForm>(emptyCreateForm);
 
   const [updatingProject, setUpdatingProject] = useState(false);
-  const [deletingProject, setDeletingProject] = useState(false); // used for GRID delete only
+  const [deletingProject, setDeletingProject] = useState(false);
 
-  const canCreateProject = hasPermission(AppPermissions.ProjectsCreate);
+  useEffect(() => {
+    resetPage();
+  }, [debouncedQuery, resetPage]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadProjects = async () => {
+      setProjectsLoading(true);
+
+      try {
+        const response = await getProjects({
+          search: debouncedQuery.trim() || undefined,
+          skip,
+          take: pageSize,
+        });
+
+        if (isCancelled) {
+          return;
+        }
+
+        setProjects(response.data);
+        setTotalCount(response.totalCount);
+        setProjectsApiAvailable(response.available);
+        setProjectsApiMessage(response.message ?? "");
+        setPageError("");
+      } catch (error) {
+        if (isCancelled) {
+          return;
+        }
+
+        setProjects([]);
+        setTotalCount(0);
+        setPageError(getErrorMessage(error, "Failed to load projects."));
+      } finally {
+        if (!isCancelled) {
+          setProjectsLoading(false);
+        }
+      }
+    };
+
+    void loadProjects();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [debouncedQuery, pageSize, reloadTick, skip]);
 
   const organizationNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -69,19 +127,6 @@ export function ProjectsPage() {
     });
     return map;
   }, [organizations]);
-
-  const filteredProjects = useMemo(() => {
-    const term = query.trim().toLowerCase();
-
-    return projects.filter((project) => {
-      if (!term) return true;
-
-      return (
-        project.name.toLowerCase().includes(term) ||
-        (project.key ?? "").toLowerCase().includes(term)
-      );
-    });
-  }, [projects, query]);
 
   const selectedOrganizationLabel = useMemo(() => {
     if (!editForm.organizationId) {
@@ -113,7 +158,7 @@ export function ProjectsPage() {
   };
 
   const emptyState =
-    projectsApiAvailable && !loadingData && filteredProjects.length === 0;
+    projectsApiAvailable && !projectsLoading && !loadingData && projects.length === 0;
 
   const loadOrganizations = async () => {
     setLoadingOrganizations(true);
@@ -167,6 +212,11 @@ export function ProjectsPage() {
     }));
   };
 
+  const reloadProjects = useCallback(async () => {
+    await refreshWorkspaceData({ includeTasks: false });
+    setReloadTick((previous) => previous + 1);
+  }, [refreshWorkspaceData]);
+
   const handleCreateProject = async (event: React.FormEvent) => {
     event.preventDefault();
     setCreateError("");
@@ -207,7 +257,7 @@ export function ProjectsPage() {
       });
 
       closeCreatePopup();
-      await refreshWorkspaceData({ includeTasks: false });
+      await reloadProjects();
     } catch (error) {
       setCreateError(getErrorMessage(error, "Failed to create project."));
     } finally {
@@ -271,7 +321,7 @@ export function ProjectsPage() {
         description: editForm.description.trim() || undefined,
       });
 
-      await refreshWorkspaceData({ includeTasks: false });
+      await reloadProjects();
       closeEditPopup();
     } catch (error) {
       setEditError(getErrorMessage(error, "Failed to update project."));
@@ -295,7 +345,7 @@ export function ProjectsPage() {
     try {
       await deleteProject(project.id);
       if (selectedProject?.id === project.id) closeEditPopup();
-      await refreshWorkspaceData({ includeTasks: false });
+      await reloadProjects();
     } catch (error) {
       setPageError(getErrorMessage(error, "Failed to delete project."));
     } finally {
@@ -329,7 +379,9 @@ export function ProjectsPage() {
         </div>
       )}
 
-      {loadingData && <div className="page-inline-info">Refreshing projects...</div>}
+      {(loadingData || projectsLoading) && (
+        <div className="page-inline-info">Refreshing projects...</div>
+      )}
 
       <section className="toolbar-row">
         <TextBox
@@ -356,108 +408,117 @@ export function ProjectsPage() {
             />
           </div>
         ) : (
-          <DataGrid
-            dataSource={filteredProjects}
-            keyExpr="id"
-            rowAlternationEnabled
-            hoverStateEnabled
-            showBorders={false}
-            columnAutoWidth
-            columnHidingEnabled
-            wordWrapEnabled
-            columnMinWidth={120}
-            noDataText="No projects found."
-            onRowClick={(event) => {
-              if (event.rowType !== "data" || !event.data) return;
+          <>
+            <DataGrid
+              dataSource={projects}
+              keyExpr="id"
+              rowAlternationEnabled
+              hoverStateEnabled
+              showBorders={false}
+              columnAutoWidth
+              columnHidingEnabled
+              wordWrapEnabled
+              columnMinWidth={120}
+              noDataText="No projects found."
+              onRowClick={(event) => {
+                if (event.rowType !== "data" || !event.data) return;
 
-              const target = event.event?.target as HTMLElement | null;
-              if (target?.closest(".inline-actions")) return;
+                const target = event.event?.target as HTMLElement | null;
+                if (target?.closest(".inline-actions")) return;
 
-              openProjectPopup(event.data as BackendProject, "view");
-            }}
-          >
-            <Column dataField="name" caption="Project" />
-            <Column dataField="key" caption="Key" width={120} />
-            <Column
-              dataField="updatedAt"
-              caption="Updated"
-              width={140}
-              cellRender={({ data }: { data: BackendProject }) =>
-                data.updatedAt ? new Date(data.updatedAt).toLocaleDateString() : "-"
-              }
+                openProjectPopup(event.data as BackendProject, "view");
+              }}
+            >
+              <Column dataField="name" caption="Project" />
+              <Column dataField="key" caption="Key" width={120} />
+              <Column
+                dataField="updatedAt"
+                caption="Updated"
+                width={140}
+                cellRender={({ data }: { data: BackendProject }) =>
+                  data.updatedAt ? new Date(data.updatedAt).toLocaleDateString() : "-"
+                }
+              />
+
+              <Column
+                caption="Actions"
+                width={320}
+                allowSorting={false}
+                allowFiltering={false}
+                cellRender={({ data }: { data: BackendProject }) => (
+                  <div
+                    className="inline-actions"
+                    onClick={(event) => event.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    <Button
+                      text="Details"
+                      stylingMode="text"
+                      onClick={(event) => {
+                        event?.event?.preventDefault?.();
+                        event?.event?.stopPropagation?.();
+                        navigate(`/projects/${data.id}`);
+                      }}
+                    />
+                    <Button
+                      text="Team"
+                      stylingMode="text"
+                      disabled={!canViewMembersInScope(data.id)}
+                      onClick={(event) => {
+                        event?.event?.preventDefault?.();
+                        event?.event?.stopPropagation?.();
+                        navigate(`/projects/${data.id}/members`);
+                      }}
+                    />
+                    <Button
+                      text="Edit"
+                      stylingMode="text"
+                      disabled={!canUpdateProjectInScope(data.id)}
+                      hint={
+                        !canUpdateProjectInScope(data.id)
+                          ? "You do not have permission to update this project."
+                          : undefined
+                      }
+                      onClick={(event) => {
+                        event?.event?.preventDefault?.();
+                        event?.event?.stopPropagation?.();
+                        openProjectPopup(data, "edit");
+                      }}
+                    />
+                    <Button
+                      text="Delete"
+                      type="danger"
+                      stylingMode="text"
+                      disabled={!canDeleteProjectInScope(data.id) || deletingProject}
+                      hint={
+                        !canDeleteProjectInScope(data.id)
+                          ? "You do not have permission to delete this project."
+                          : undefined
+                      }
+                      onClick={(event) => {
+                        event?.event?.preventDefault?.();
+                        event?.event?.stopPropagation?.();
+                        void handleDeleteProjectFromGrid(data);
+                      }}
+                    />
+                  </div>
+                )}
+              />
+            </DataGrid>
+
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              loading={projectsLoading}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
             />
-
-            <Column
-              caption="Actions"
-              width={320}
-              allowSorting={false}
-              allowFiltering={false}
-              cellRender={({ data }: { data: BackendProject }) => (
-                <div
-                  className="inline-actions"
-                  onClick={(event) => event.stopPropagation()}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onPointerDown={(event) => event.stopPropagation()}
-                >
-                  <Button
-                    text="Details"
-                    stylingMode="text"
-                    onClick={(event) => {
-                      event?.event?.preventDefault?.();
-                      event?.event?.stopPropagation?.();
-                      navigate(`/projects/${data.id}`);
-                    }}
-                  />
-                  <Button
-                    text="Team"
-                    stylingMode="text"
-                    disabled={!canViewMembersInScope(data.id)}
-                    onClick={(event) => {
-                      event?.event?.preventDefault?.();
-                      event?.event?.stopPropagation?.();
-                      navigate(`/projects/${data.id}/members`);
-                    }}
-                  />
-                  <Button
-                    text="Edit"
-                    stylingMode="text"
-                    disabled={!canUpdateProjectInScope(data.id)}
-                    hint={
-                      !canUpdateProjectInScope(data.id)
-                        ? "You do not have permission to update this project."
-                        : undefined
-                    }
-                    onClick={(event) => {
-                      event?.event?.preventDefault?.();
-                      event?.event?.stopPropagation?.();
-                      openProjectPopup(data, "edit");
-                    }}
-                  />
-                  <Button
-                    text="Delete"
-                    type="danger"
-                    stylingMode="text"
-                    disabled={!canDeleteProjectInScope(data.id) || deletingProject}
-                    hint={
-                      !canDeleteProjectInScope(data.id)
-                        ? "You do not have permission to delete this project."
-                        : undefined
-                    }
-                    onClick={(event) => {
-                      event?.event?.preventDefault?.();
-                      event?.event?.stopPropagation?.();
-                      void handleDeleteProjectFromGrid(data);
-                    }}
-                  />
-                </div>
-              )}
-            />
-            <Paging enabled pageSize={10} />
-          </DataGrid>
+          </>
         )}
       </section>
 
-      {/* Create modal */}
       <Modal
         visible={showCreatePopup}
         onClose={closeCreatePopup}

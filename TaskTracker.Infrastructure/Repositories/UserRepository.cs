@@ -47,16 +47,45 @@ public sealed class UserRepository : IUserRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<UserSummaryReadModel>> GetUserSummariesAsync(
+    public async Task<UserSummaryPageReadModel> GetUserSummariesAsync(
         bool archived,
+        string? search = null,
+        int? skip = null,
+        int? take = null,
         CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Users
+        var query = _dbContext.Users
             .AsNoTracking()
-            .Where(user => user.IsArchived == archived)
+            .Where(user => user.IsArchived == archived);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var searchTerm = search.Trim();
+            var likePattern = $"%{searchTerm.Replace("%", "\\%").Replace("_", "\\_")}%";
+            query = query.Where(user =>
+                EF.Functions.ILike(user.FirstName, likePattern)
+                || EF.Functions.ILike(user.LastName, likePattern)
+                || EF.Functions.ILike(user.Email!, likePattern));
+        }
+
+        query = query
             .OrderBy(user => user.FirstName)
             .ThenBy(user => user.LastName)
-            .ThenBy(user => user.Email)
+            .ThenBy(user => user.Email);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        if (skip.HasValue)
+        {
+            query = query.Skip(Math.Max(0, skip.Value));
+        }
+
+        if (take.HasValue && take.Value > 0)
+        {
+            query = query.Take(take.Value);
+        }
+
+        var users = await query
             .Select(user => new UserSummaryReadModel
             {
                 UserId = user.Id,
@@ -83,6 +112,12 @@ public sealed class UserRepository : IUserRepository
                 ReportedTaskCount = _dbContext.Tasks.Count(task => task.ReporterId == user.Id),
             })
             .ToListAsync(cancellationToken);
+
+        return new UserSummaryPageReadModel
+        {
+            Users = users,
+            TotalCount = totalCount
+        };
     }
 
     public async Task<UserDetailsReadModel?> GetUserDetailsAsync(

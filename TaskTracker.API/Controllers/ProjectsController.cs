@@ -23,9 +23,9 @@ public class ProjectsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<ProjectDto>>> GetAll([FromQuery] Guid? organizationId, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResultDto<ProjectDto>>> GetAll([FromQuery] GetProjectsQuery query, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new GetProjectsQuery { OrganizationId = organizationId }, cancellationToken);
+        var result = await _mediator.Send(query, cancellationToken);
         return Ok(result);
     }
 
