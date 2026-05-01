@@ -1,5 +1,11 @@
-import { apiRequest } from "./apiClient";
 import type { BackendOrganization } from "../types/app";
+import { apiRequest } from "./apiClient";
+import {
+  appendPagingParams,
+  normalizePagedResponse,
+  type PagedResponse,
+  type PagingOptions,
+} from "./pagedResponse";
 
 export interface CreateOrganizationPayload {
   name: string;
@@ -13,15 +19,36 @@ export interface UpdateOrganizationPayload {
   description?: string;
 }
 
-export async function getOrganizations(): Promise<BackendOrganization[]> {
-  const raw = await apiRequest<unknown[]>("/api/Organizations", {
+export interface OrganizationQueryOptions extends PagingOptions {
+  search?: string;
+}
+
+export async function loadOrganizations(
+  options: OrganizationQueryOptions = {}
+): Promise<PagedResponse<BackendOrganization>> {
+  const params = new URLSearchParams();
+
+  if (options.search?.trim()) {
+    params.set("Search", options.search.trim());
+  }
+
+  appendPagingParams(params, options);
+
+  const endpoint = params.toString()
+    ? `/api/Organizations?${params.toString()}`
+    : "/api/Organizations";
+
+  const raw = await apiRequest<unknown>(endpoint, {
     method: "GET",
     requiresAuth: true,
   });
 
-  return (raw ?? [])
-    .map(normalizeOrganization)
-    .filter((item): item is BackendOrganization => item !== null);
+  return normalizePagedResponse(raw, normalizeOrganization);
+}
+
+export async function getOrganizations(): Promise<BackendOrganization[]> {
+  const response = await loadOrganizations();
+  return response.data;
 }
 
 export async function createOrganization(

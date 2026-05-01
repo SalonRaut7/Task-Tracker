@@ -6,8 +6,11 @@ public interface IUserRepository
 {
     Task<string?> GetFullNameAsync(string userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<string>> GetSuperAdminUserIdsAsync(CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<UserSummaryReadModel>> GetUserSummariesAsync(
+    Task<UserSummaryPageReadModel> GetUserSummariesAsync(
         bool archived,
+        string? search = null,
+        int? skip = null,
+        int? take = null,
         CancellationToken cancellationToken = default);
 
     Task<UserDetailsReadModel?> GetUserDetailsAsync(
@@ -56,6 +59,12 @@ public sealed class UserSummaryReadModel
     public int ProjectCount { get; init; }
     public int AssignedTaskCount { get; init; }
     public int ReportedTaskCount { get; init; }
+}
+
+public sealed class UserSummaryPageReadModel
+{
+    public IReadOnlyList<UserSummaryReadModel> Users { get; init; } = [];
+    public int TotalCount { get; init; }
 }
 
 public sealed class UserDetailsReadModel

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "devextreme-react/button";
-import DataGrid, { Column, Paging } from "devextreme-react/data-grid";
+import DataGrid, { Column } from "devextreme-react/data-grid";
 import DateBox from "devextreme-react/date-box";
 import Popup from "devextreme-react/popup";
 import SelectBox from "devextreme-react/select-box";
@@ -8,11 +8,15 @@ import TextArea from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
 import { useNavigate } from "react-router-dom";
 import { Modal } from "../components/Modal";
+import { PaginationControls } from "../components/PaginationControls";
 import { useApp } from "../context/AppContext";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { usePagination } from "../hooks/usePagination";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import { getEpics } from "../services/epicService";
 import { getMembersByScope } from "../services/memberService";
 import { getSprints } from "../services/sprintService";
+import { loadTasks } from "../services/taskService";
 import { AppPermissions } from "../security/permissions";
 import type { BackendEpic, BackendSprint } from "../types/app";
 import type { ScopeMember } from "../types/invitation";
@@ -162,7 +166,7 @@ function toTaskForm(task: TaskDto): TaskForm {
 
 export function TasksPage() {
   const navigate = useNavigate();
-  const { tasks, projects, loadingData, addTask, updateTask, deleteTask, hasPermission, user } = useApp();
+  const { projects, loadingData, addTask, updateTask, deleteTask, hasPermission, user } = useApp();
 
   const canCreate = hasPermission(AppPermissions.TasksCreate);
   const canUpdate = hasPermission(AppPermissions.TasksUpdate);
@@ -171,11 +175,21 @@ export function TasksPage() {
 
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 250);
   const [selectedTask, setSelectedTask] = useState<TaskDto | null>(null);
   const [taskPopupMode, setTaskPopupMode] = useState<TaskPopupMode>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [pageError, setPageError] = useState("");
   const [requestError, setRequestError] = useState("");
   const [requestLoading, setRequestLoading] = useState(false);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pagedTasks, setPagedTasks] = useState<TaskDto[]>([]);
+  const [reloadTick, setReloadTick] = useState(0);
+  const { page, pageSize, skip, setPage, setPageSize, resetPage } = usePagination({
+    totalCount,
+    initialPageSize: 10,
+  });
   const [filters, setFilters] = useState<TaskFilters>({
     status: "all",
     priority: "all",
@@ -325,7 +339,7 @@ export function TasksPage() {
   }, [createAssignableMembers, canAssign, user]);
 
   const editAssigneeOptions = useMemo<AssigneeOption[]>(() => {
-    let options = editAssignableMembers.map((member) => ({
+    const options = editAssignableMembers.map((member) => ({
       id: member.userId,
       label: toAssigneeLabel(member),
     }));
@@ -475,26 +489,60 @@ export function TasksPage() {
     void loadProjectAssignableMembers(editForm.projectId, setEditAssignableMembers);
   }, [selectedTask?.id, selectedTask?.projectId, editForm?.projectId]);
 
-  const filteredTasks = useMemo(() => {
-    return tasks
-      .filter((task) => {
-        const term = query.trim().toLowerCase();
-        const matchesText =
-          !term ||
-          (task.title ?? "").toLowerCase().includes(term) ||
-          String(task.id).toLowerCase().includes(term);
-        const matchesStatus =
-          filters.status === "all" || task.status === filters.status;
-        const matchesPriority =
-          filters.priority === "all" || task.priority === filters.priority;
+  useEffect(() => {
+    resetPage();
+  }, [debouncedQuery, filters.priority, filters.status, resetPage]);
 
-        return matchesText && matchesStatus && matchesPriority;
-      })
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      );
-  }, [tasks, query, filters]);
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadTaskPage = async () => {
+      setTasksLoading(true);
+
+      try {
+        const response = await loadTasks(
+          {
+            skip,
+            take: pageSize,
+          },
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          debouncedQuery.trim() || undefined,
+          filters.status === "all" ? undefined : filters.status,
+          filters.priority === "all" ? undefined : filters.priority
+        );
+
+        if (isCancelled) {
+          return;
+        }
+
+        setPagedTasks(response.data);
+        setTotalCount(response.totalCount);
+        setPageError("");
+      } catch (error) {
+        if (isCancelled) {
+          return;
+        }
+
+        setPagedTasks([]);
+        setTotalCount(0);
+        setPageError(getErrorMessage(error, "Failed to load tasks."));
+      } finally {
+        if (!isCancelled) {
+          setTasksLoading(false);
+        }
+      }
+    };
+
+    void loadTaskPage();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [debouncedQuery, filters.priority, filters.status, pageSize, reloadTick, skip]);
 
   const projectNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -524,6 +572,7 @@ export function TasksPage() {
     setRequestLoading(true);
     try {
       await addTask(toCreateDto(createForm));
+      setReloadTick((previous) => previous + 1);
       setCreateForm({
         projectId: createForm.projectId,
         epicId: "",
@@ -579,6 +628,7 @@ export function TasksPage() {
     setRequestLoading(true);
     try {
       await updateTask(selectedTask.id, selectedTask.projectId, toUpdateDto(editForm));
+      setReloadTick((previous) => previous + 1);
       closeTaskDetails();
     } catch (error) {
       setRequestError(getErrorMessage(error, "Failed to update task."));
@@ -593,7 +643,7 @@ export function TasksPage() {
       return;
     }
 
-    const confirmed = window.confirm(`Delete task \"${task.title || `#${task.id}`}\"?`);
+    const confirmed = window.confirm(`Delete task "${task.title || `#${task.id}`}"?`);
     if (!confirmed) {
       return;
     }
@@ -603,6 +653,7 @@ export function TasksPage() {
 
     try {
       await deleteTask(task.id, task.projectId);
+      setReloadTick((previous) => previous + 1);
       if (selectedTask?.id === task.id) {
         setSelectedTask(null);
         setEditForm(null);
@@ -650,7 +701,8 @@ export function TasksPage() {
         </div>
       ) : null}
 
-      {loadingData && <div className="page-inline-info">Refreshing tasks...</div>}
+      {(loadingData || tasksLoading) && <div className="page-inline-info">Refreshing tasks...</div>}
+      {pageError && <div className="form-error">{pageError}</div>}
       {!showCreate && !selectedTask && requestError && <div className="form-error">{requestError}</div>}
 
       <section className="toolbar-row">
@@ -710,7 +762,7 @@ export function TasksPage() {
       {viewMode === "list" && (
         <section className="card">
           <DataGrid
-            dataSource={filteredTasks}
+            dataSource={pagedTasks}
             keyExpr="id"
             showBorders={false}
             rowAlternationEnabled
@@ -830,34 +882,53 @@ export function TasksPage() {
                 </div>
               )}
             />
-            <Paging enabled pageSize={10} />
           </DataGrid>
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            totalCount={totalCount}
+            loading={tasksLoading}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </section>
       )}
 
       {viewMode === "kanban" && (
-        <section className="kanban-grid kanban-grid-wide">
-          {boardColumns.map((column) => (
-            <article className="kanban-column" key={column.id}>
-              <h3>{column.label}</h3>
-              <div className="kanban-list">
-                {filteredTasks
-                  .filter((task) => task.status === column.id)
-                  .map((task) => (
-                    <button
-                      type="button"
-                      key={task.id}
-                      className="kanban-card"
-                      onClick={() => goToTaskDetails(task)}
-                    >
-                      <strong>{task.title || "Untitled task"}</strong>
-                      <span>{priorityLabel(task.priority)}</span>
-                    </button>
-                  ))}
-              </div>
-            </article>
-          ))}
-        </section>
+        <>
+          <section className="kanban-grid kanban-grid-wide">
+            {boardColumns.map((column) => (
+              <article className="kanban-column" key={column.id}>
+                <h3>{column.label}</h3>
+                <div className="kanban-list">
+                  {pagedTasks
+                    .filter((task) => task.status === column.id)
+                    .map((task) => (
+                      <button
+                        type="button"
+                        key={task.id}
+                        className="kanban-card"
+                        onClick={() => goToTaskDetails(task)}
+                      >
+                        <strong>{task.title || "Untitled task"}</strong>
+                        <span>{priorityLabel(task.priority)}</span>
+                      </button>
+                    ))}
+                </div>
+              </article>
+            ))}
+          </section>
+          <section className="card">
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              loading={tasksLoading}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          </section>
+        </>
       )}
 
       <Modal

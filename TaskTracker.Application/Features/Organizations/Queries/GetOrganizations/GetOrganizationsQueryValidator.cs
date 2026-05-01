@@ -1,15 +1,11 @@
 using FluentValidation;
 
-namespace TaskTracker.Application.Features.Projects.Queries.GetProjects;
+namespace TaskTracker.Application.Features.Organizations.Queries.GetOrganizations;
 
-public sealed class GetProjectsQueryValidator : AbstractValidator<GetProjectsQuery>
+public sealed class GetOrganizationsQueryValidator : AbstractValidator<GetOrganizationsQuery>
 {
-    public GetProjectsQueryValidator()
+    public GetOrganizationsQueryValidator()
     {
-        RuleFor(x => x.OrganizationId)
-            .NotEmpty().WithMessage("OrganizationId cannot be empty GUID when provided")
-            .When(x => x.OrganizationId.HasValue);
-
         RuleFor(x => x.Search)
             .MaximumLength(100).WithMessage("Search cannot exceed 100 characters")
             .When(x => !string.IsNullOrWhiteSpace(x.Search));

@@ -1,4 +1,3 @@
-import { apiRequest } from "./apiClient";
 import type {
   CurrentUserProfile,
   BackendUserDetails,
@@ -6,6 +5,17 @@ import type {
   BackendUserProjectSummary,
   BackendUserSummary,
 } from "../types/app";
+import { apiRequest } from "./apiClient";
+import {
+  appendPagingParams,
+  normalizePagedResponse,
+  type PagedResponse,
+  type PagingOptions,
+} from "./pagedResponse";
+
+export interface UserQueryOptions extends PagingOptions {
+  search?: string;
+}
 
 export async function getCurrentUserProfile(): Promise<CurrentUserProfile> {
   const raw = await apiRequest<unknown>("/api/Me/profile", {
@@ -32,26 +42,57 @@ export async function updateCurrentUserProfile(payload: {
   return normalizeCurrentUserProfile(raw);
 }
 
-export async function getUsers(): Promise<BackendUserSummary[]> {
-  const raw = await apiRequest<unknown[]>("/api/Users", {
+export async function loadUsers(
+  options: UserQueryOptions = {}
+): Promise<PagedResponse<BackendUserSummary>> {
+  const params = new URLSearchParams();
+
+  if (options.search?.trim()) {
+    params.set("Search", options.search.trim());
+  }
+
+  appendPagingParams(params, options);
+
+  const endpoint = params.toString() ? `/api/Users?${params.toString()}` : "/api/Users";
+  const raw = await apiRequest<unknown>(endpoint, {
     method: "GET",
     requiresAuth: true,
   });
 
-  return (raw ?? [])
-    .map(normalizeUserSummary)
-    .filter((item): item is BackendUserSummary => item !== null);
+  return normalizePagedResponse(raw, normalizeUserSummary);
+}
+
+export async function getUsers(): Promise<BackendUserSummary[]> {
+  const response = await loadUsers();
+  return response.data;
+}
+
+export async function loadArchivedUsers(
+  options: UserQueryOptions = {}
+): Promise<PagedResponse<BackendUserSummary>> {
+  const params = new URLSearchParams();
+
+  if (options.search?.trim()) {
+    params.set("Search", options.search.trim());
+  }
+
+  appendPagingParams(params, options);
+
+  const endpoint = params.toString()
+    ? `/api/Users/archive?${params.toString()}`
+    : "/api/Users/archive";
+
+  const raw = await apiRequest<unknown>(endpoint, {
+    method: "GET",
+    requiresAuth: true,
+  });
+
+  return normalizePagedResponse(raw, normalizeUserSummary);
 }
 
 export async function getArchivedUsers(): Promise<BackendUserSummary[]> {
-  const raw = await apiRequest<unknown[]>("/api/Users/archive", {
-    method: "GET",
-    requiresAuth: true,
-  });
-
-  return (raw ?? [])
-    .map(normalizeUserSummary)
-    .filter((item): item is BackendUserSummary => item !== null);
+  const response = await loadArchivedUsers();
+  return response.data;
 }
 
 export async function getUserDetails(userId: string): Promise<BackendUserDetails | null> {
