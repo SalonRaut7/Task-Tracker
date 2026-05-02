@@ -1,5 +1,7 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Entities.Identity;
+using TaskTracker.Domain.Events;
 
 namespace TaskTracker.Domain.Entities
 {
@@ -27,6 +29,10 @@ namespace TaskTracker.Domain.Entities
         public ApplicationUser? Assignee { get; private set; }
         public ApplicationUser Reporter { get; private set; } = null!;
         public ICollection<Comment> Comments { get; private set; } = new List<Comment>();
+        [NotMapped]
+        private readonly List<TaskChangedDomainEvent> _domainEvents = [];
+        [NotMapped]
+        public IReadOnlyList<TaskChangedDomainEvent> DomainEvents => _domainEvents;
 
         // Required by EF Core — not for external use
         private TaskItem() { }
@@ -132,6 +138,37 @@ namespace TaskTracker.Domain.Entities
             if (CreatedAt > UpdatedAt)
                 throw new InvalidOperationException(
                     "CreatedAt must be earlier than or equal to UpdatedAt.");
+        }
+
+        public void RaiseChangedEvent(TaskChangedDomainEvent domainEvent)
+        {
+            _domainEvents.Add(domainEvent);
+        }
+
+        public void ClearDomainEvents()
+        {
+            _domainEvents.Clear();
+        }
+
+        public TaskSnapshot ToSnapshot()
+        {
+            return new TaskSnapshot
+            {
+                Id = Id,
+                ProjectId = ProjectId,
+                EpicId = EpicId,
+                SprintId = SprintId,
+                AssigneeId = AssigneeId,
+                ReporterId = ReporterId,
+                Title = Title,
+                Description = Description,
+                Status = Status,
+                Priority = Priority,
+                StartDate = StartDate,
+                EndDate = EndDate,
+                CreatedAt = CreatedAt,
+                UpdatedAt = UpdatedAt,
+            };
         }
 
         // ── Private helpers ────────────────────────────────────────────────

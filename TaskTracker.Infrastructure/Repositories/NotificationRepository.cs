@@ -18,12 +18,6 @@ public class NotificationRepository : INotificationRepository
         _notificationOptions = notificationOptions.Value;
     }
 
-    public async Task AddAsync(Notification notification, CancellationToken ct = default)
-    {
-        await _context.Notifications.AddAsync(notification, ct);
-        await _context.SaveChangesAsync(ct);
-    }
-
     public async Task AddRangeAsync(IEnumerable<Notification> notifications, CancellationToken ct = default)
     {
         await _context.Notifications.AddRangeAsync(notifications, ct);
@@ -54,6 +48,16 @@ public class NotificationRepository : INotificationRepository
         await _context.Notifications
             .Where(n => n.RecipientUserId == userId && !n.IsRead)
             .ExecuteUpdateAsync(s => s.SetProperty(n => n.IsRead, true), ct);
+    }
+
+    public Task<bool> ExistsForTaskTypeSinceAsync(string type, int taskId, DateTime sinceUtc, CancellationToken ct = default)
+    {
+        return _context.Notifications
+            .AsNoTracking()
+            .AnyAsync(n =>
+                n.Type == type &&
+                n.TaskId == taskId &&
+                n.CreatedAt >= sinceUtc, ct);
     }
 
     public async Task PruneAsync(string userId, CancellationToken ct = default)

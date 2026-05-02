@@ -52,16 +52,13 @@ public sealed class UsersController : ControllerBase
     [HttpPost("{userId}/archive")]
     public async Task<ActionResult> Archive(
         [FromRoute] string userId,
-        [FromBody] ArchiveUserDto? dto,
+        [FromBody] ArchiveUserCommand? command,
         CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(
-            new ArchiveUserCommand
-            {
-                UserId = userId,
-                Reason = dto?.Reason,
-            },
-            cancellationToken);
+        command ??= new ArchiveUserCommand();
+        command.UserId = userId;
+
+        var result = await _mediator.Send(command, cancellationToken);
 
         if (!result)
         {

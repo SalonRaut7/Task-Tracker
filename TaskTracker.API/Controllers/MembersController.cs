@@ -38,15 +38,9 @@ public class MembersController : ControllerBase
     /// <summary>Update a member's scoped role.</summary>
     [HttpPut("role")]
     public async Task<ActionResult<MemberDto>> UpdateRole(
-        [FromBody] UpdateMemberRoleDto dto, CancellationToken cancellationToken)
+        [FromBody] UpdateMemberRoleCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new UpdateMemberRoleCommand
-        {
-            ScopeType = dto.ScopeType,
-            ScopeId = dto.ScopeId,
-            UserId = dto.UserId,
-            NewRole = dto.NewRole
-        }, cancellationToken);
+        var result = await _mediator.Send(command, cancellationToken);
 
         return Ok(result);
     }

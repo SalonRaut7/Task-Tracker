@@ -1,11 +1,11 @@
-using AutoMapper;
 using MediatR;
 using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
-using TaskTracker.Application.Features.Tasks.Notifications;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Enums;
+using TaskTracker.Domain.Events;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Tasks.Commands.CreateTask;
@@ -14,39 +14,25 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskD
 {
     private readonly ITaskRepository _taskRepository;
     private readonly IMembershipRepository _membershipRepository;
-    private readonly IMapper _mapper;
     private readonly ICurrentUserService _currentUser;
     private readonly IPermissionEvaluator _permissionEvaluator;
-    private readonly IPublisher _publisher;
-    private readonly IUserRepository _userRepository;
 
     public CreateTaskCommandHandler(
         ITaskRepository taskRepository,
         IMembershipRepository membershipRepository,
-        IMapper mapper,
         ICurrentUserService currentUser,
-        IPermissionEvaluator permissionEvaluator,
-        IPublisher publisher,
-        IUserRepository userRepository)
+        IPermissionEvaluator permissionEvaluator)
     {
         _taskRepository = taskRepository;
         _membershipRepository = membershipRepository;
-        _mapper = mapper;
         _currentUser = currentUser;
         _permissionEvaluator = permissionEvaluator;
-        _publisher = publisher;
-        _userRepository = userRepository;
     }
 
     public async Task<TaskDto> Handle(
         CreateTaskCommand command,
         CancellationToken cancellationToken)
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-        {
-            throw new UnauthorizedAccessException("Authentication is required.");
-        }
-
         var currentUserId = _currentUser.UserId!;
 
         var projectExists = await _taskRepository.ProjectExistsAsync(command.ProjectId, cancellationToken);
@@ -126,24 +112,21 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskD
             command.EndDate,
             DateTime.UtcNow);
 
-        await _taskRepository.AddAsync(task, cancellationToken);
-
-        var dto = _mapper.Map<TaskDto>(task);
-
-        // Publish real-time notification
-        var actorName = await _userRepository.GetFullNameAsync(currentUserId, cancellationToken) ?? "Unknown";
-        await _publisher.Publish(new TaskChangedNotification
+        task.RaiseChangedEvent(new TaskChangedDomainEvent
         {
             EventType = "Created",
-            Task = dto,
             TaskId = task.Id,
             TaskTitle = task.Title,
             ProjectId = command.ProjectId,
             ActorUserId = currentUserId,
-            ActorName = actorName,
             NewAssigneeId = task.AssigneeId,
-        }, cancellationToken);
+            NewStatus = (int)task.Status,
+            Task = task.ToSnapshot(),
+            TaskEntity = task,
+        });
 
-        return dto;
+        await _taskRepository.AddAsync(task, cancellationToken);
+
+        return TaskDtoMapper.ToDto(task);
     }
 }

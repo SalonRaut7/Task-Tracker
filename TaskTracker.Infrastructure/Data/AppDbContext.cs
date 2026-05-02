@@ -1,14 +1,21 @@
+using MediatR;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Entities.Identity;
+using TaskTracker.Domain.Events;
 
 namespace TaskTracker.Infrastructure.Data;
 
 public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, string>
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options)
-        : base(options) { }
+    private readonly IPublisher _publisher;
+
+    public AppDbContext(DbContextOptions<AppDbContext> options, IPublisher publisher)
+        : base(options)
+    {
+        _publisher = publisher;
+    }
 
     // ── Existing ──────────────────────────────────────────────
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
@@ -56,14 +63,17 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         ApplyAuditStamps();
-        return base.SaveChanges(acceptAllChangesOnSuccess);
+        var domainEvents = CollectTaskDomainEvents();
+        var result = base.SaveChanges(acceptAllChangesOnSuccess);
+        ClearTaskDomainEvents();
+        PublishDomainEventsAsync(domainEvents, CancellationToken.None).GetAwaiter().GetResult();
+        return result;
     }
 
     public override Task<int> SaveChangesAsync(
         CancellationToken cancellationToken = default)
     {
-        ApplyAuditStamps();
-        return base.SaveChangesAsync(cancellationToken);
+        return SaveChangesAsync(true, cancellationToken);
     }
 
     public override Task<int> SaveChangesAsync(
@@ -71,7 +81,18 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
         CancellationToken cancellationToken = default)
     {
         ApplyAuditStamps();
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        return SaveChangesAndPublishAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private async Task<int> SaveChangesAndPublishAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken)
+    {
+        var domainEvents = CollectTaskDomainEvents();
+        var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        ClearTaskDomainEvents();
+        await PublishDomainEventsAsync(domainEvents, cancellationToken);
+        return result;
     }
 
     private void ApplyAuditStamps()
@@ -94,6 +115,46 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                     entry.Property(t => t.UpdatedAt).IsModified = true;
                     break;
             }
+        }
+    }
+
+    private List<TaskChangedDomainEvent> CollectTaskDomainEvents()
+    {
+        var events = new List<TaskChangedDomainEvent>();
+
+        foreach (var entry in ChangeTracker.Entries<TaskItem>())
+        {
+            if (entry.Entity.DomainEvents.Count == 0)
+            {
+                continue;
+            }
+
+            events.AddRange(entry.Entity.DomainEvents);
+        }
+
+        return events;
+    }
+
+    private void ClearTaskDomainEvents()
+    {
+        foreach (var entry in ChangeTracker.Entries<TaskItem>())
+        {
+            if (entry.Entity.DomainEvents.Count == 0)
+            {
+                continue;
+            }
+
+            entry.Entity.ClearDomainEvents();
+        }
+    }
+
+    private async Task PublishDomainEventsAsync(
+        IReadOnlyList<TaskChangedDomainEvent> domainEvents,
+        CancellationToken cancellationToken)
+    {
+        foreach (var domainEvent in domainEvents)
+        {
+            await _publisher.Publish(domainEvent, cancellationToken);
         }
     }
 }

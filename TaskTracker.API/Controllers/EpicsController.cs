@@ -42,29 +42,18 @@ public class EpicsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<EpicDto>> Create([FromBody] CreateEpicDto dto, CancellationToken cancellationToken)
+    public async Task<ActionResult<EpicDto>> Create([FromBody] CreateEpicCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new CreateEpicCommand
-        {
-            ProjectId = dto.ProjectId,
-            Title = dto.Title,
-            Description = dto.Description,
-            Status = dto.Status
-        }, cancellationToken);
+        var result = await _mediator.Send(command, cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<EpicDto>> Update([FromRoute] Guid id, [FromBody] UpdateEpicDto dto, CancellationToken cancellationToken)
+    public async Task<ActionResult<EpicDto>> Update([FromRoute] Guid id, [FromBody] UpdateEpicCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new UpdateEpicCommand
-        {
-            Id = id,
-            Title = dto.Title,
-            Description = dto.Description,
-            Status = dto.Status
-        }, cancellationToken);
+        command.Id = id;
+        var result = await _mediator.Send(command, cancellationToken);
 
         if (result is null)
         {

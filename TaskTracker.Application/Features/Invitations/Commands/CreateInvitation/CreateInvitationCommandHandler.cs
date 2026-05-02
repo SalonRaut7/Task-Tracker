@@ -6,6 +6,7 @@ using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Options;
 using TaskTracker.Application.Interfaces;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Entities.Identity;
@@ -53,9 +54,6 @@ public sealed class CreateInvitationCommandHandler : IRequestHandler<CreateInvit
 
     public async Task<InvitationDto> Handle(CreateInvitationCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-            throw new UnauthorizedAccessException("Authentication is required.");
-
         var normalizedEmail = request.InviteeEmail.Trim().ToLowerInvariant();
         var inviterUserId = _currentUser.UserId!;
 
@@ -123,19 +121,16 @@ public sealed class CreateInvitationCommandHandler : IRequestHandler<CreateInvit
         var rawToken = GenerateSecureToken();
         var tokenHash = _tokenService.HashToken(rawToken);
 
-        var invitation = new Invitation
-        {
-            ScopeType = request.ScopeType,
-            ScopeId = request.ScopeId,
-            InviteeEmail = normalizedEmail,
-            InviteeUserId = existingUser?.Id,
-            Role = request.Role,
-            TokenHash = tokenHash,
-            ExpiresAt = DateTime.UtcNow.AddDays(_inviteOptions.ExpirationDays),
-            Status = InvitationStatus.Pending,
-            InvitedByUserId = inviterUserId,
-            CreatedAt = DateTime.UtcNow
-        };
+        var invitation = Invitation.Create(
+            request.ScopeType,
+            request.ScopeId,
+            normalizedEmail,
+            existingUser?.Id,
+            request.Role,
+            tokenHash,
+            DateTime.UtcNow.AddDays(_inviteOptions.ExpirationDays),
+            inviterUserId,
+            DateTime.UtcNow);
 
         await _invitationRepository.AddAsync(invitation, cancellationToken);
 
@@ -151,19 +146,7 @@ public sealed class CreateInvitationCommandHandler : IRequestHandler<CreateInvit
 
         await _pushService.BroadcastScopeMembersChangedAsync(request.ScopeType, request.ScopeId, cancellationToken);
 
-        return new InvitationDto
-        {
-            Id = invitation.Id,
-            ScopeType = invitation.ScopeType,
-            ScopeId = invitation.ScopeId,
-            InviteeEmail = invitation.InviteeEmail,
-            Role = invitation.Role,
-            Status = invitation.Status,
-            InvitedByUserId = invitation.InvitedByUserId,
-            InvitedByName = inviterName,
-            CreatedAt = invitation.CreatedAt,
-            ExpiresAt = invitation.ExpiresAt
-        };
+        return InvitationDtoMapper.ToDto(invitation, inviterName);
     }
 
     private static IReadOnlyList<string> GetAssignableRoles(

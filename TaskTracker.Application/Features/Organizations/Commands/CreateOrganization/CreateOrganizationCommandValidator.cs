@@ -8,6 +8,9 @@ public sealed class CreateOrganizationCommandValidator : AbstractValidator<Creat
     {
         RuleFor(x => x.Name)
             .NotEmpty().WithMessage("Name is required.")
+            .Matches(@"^[a-zA-Z0-9\s]+$").WithMessage("Name must be alphanumeric.")
+            .Must(name => name.Any(char.IsLetter))
+            .WithMessage("Name must contain at least one letter.")
             .MaximumLength(200).WithMessage("Name cannot exceed 200 characters.");
 
         RuleFor(x => x.Slug)

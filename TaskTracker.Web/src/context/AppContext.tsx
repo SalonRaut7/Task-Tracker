@@ -551,20 +551,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Notification actions ───────────────────────────────────────
   const markNotificationRead = (id: string) => {
+    let previousNotifications: AppNotification[] = [];
     setNotifications((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, isRead: true } : item
-      )
+      {
+        previousNotifications = prev;
+        return prev.map((item) =>
+          item.id === id ? { ...item, isRead: true } : item
+        );
+      }
     );
-    // Fire-and-forget REST call
-    void markNotificationReadRequest(id).catch(() => undefined);
+
+    void markNotificationReadRequest(id).catch(async () => {
+      try {
+        const fresh = await fetchNotificationsRequest(50);
+        setNotifications(fresh);
+      } catch {
+        setNotifications(previousNotifications);
+      }
+    });
   };
 
   const markAllNotificationsRead = () => {
-    setNotifications((prev) =>
-      prev.map((item) => ({ ...item, isRead: true }))
-    );
-    void markAllNotificationsReadRequest().catch(() => undefined);
+    let previousNotifications: AppNotification[] = [];
+    setNotifications((prev) => {
+      previousNotifications = prev;
+      return prev.map((item) => ({ ...item, isRead: true }));
+    });
+
+    void markAllNotificationsReadRequest().catch(async () => {
+      try {
+        const fresh = await fetchNotificationsRequest(50);
+        setNotifications(fresh);
+      } catch {
+        setNotifications(previousNotifications);
+      }
+    });
   };
 
   const value = useMemo<AppContextValue>(

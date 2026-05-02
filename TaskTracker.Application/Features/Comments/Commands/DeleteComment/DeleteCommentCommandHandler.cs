@@ -37,11 +37,6 @@ public sealed class DeleteCommentCommandHandler : IRequestHandler<DeleteCommentC
         }
 
         // Check ownership: user must be the author or have higher role
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-        {
-            throw new UnauthorizedAccessException("Authentication is required.");
-        }
-
         var userId = _currentUser.UserId!;
         var isAuthor = string.Equals(comment.AuthorId, userId, StringComparison.Ordinal);
 

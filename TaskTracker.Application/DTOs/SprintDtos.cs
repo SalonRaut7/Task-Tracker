@@ -11,13 +11,6 @@ public abstract class SprintBaseDto
     public SprintStatus Status { get; set; } = SprintStatus.Planning;
 }
 
-public sealed class CreateSprintDto : SprintBaseDto
-{
-    public Guid ProjectId { get; set; }
-}
-
-public sealed class UpdateSprintDto : SprintBaseDto;
-
 public sealed class SprintDto : SprintBaseDto
 {
     public Guid Id { get; set; }

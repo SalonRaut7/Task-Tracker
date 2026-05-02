@@ -11,6 +11,7 @@ public sealed class CreateEpicCommandValidator : AbstractValidator<CreateEpicCom
 
         RuleFor(x => x.Title)
             .NotEmpty().WithMessage("Epic title is required.")
+            .Matches(@"[a-zA-Z]").WithMessage("Epic title must contain at least one letter.")
             .MaximumLength(500).WithMessage("Epic title cannot exceed 500 characters.");
 
         RuleFor(x => x.Description)

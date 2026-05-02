@@ -1,8 +1,7 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Features.Invitations;
 using TaskTracker.Application.Interfaces;
-using TaskTracker.Domain.Constants;
-using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Invitations.Commands.RevokeInvitation;
@@ -28,35 +27,18 @@ public sealed class RevokeInvitationCommandHandler : IRequestHandler<RevokeInvit
 
     public async Task<bool> Handle(RevokeInvitationCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-            throw new UnauthorizedAccessException("Authentication is required.");
-
         var invitation = await _invitationRepository.GetByIdAsync(request.InvitationId, cancellationToken)
             ?? throw new InvalidOperationException("Invitation not found.");
 
-        var userId = _currentUser.UserId!;
+        var userId = _currentUser.RequireUserId();
 
-        var canRevoke = await _permissionEvaluator.HasPermissionAsync(
-            userId,
-            AppPermissions.InvitationsRevoke,
+        await InvitationAuthorizationGuard.EnsureOrganizationInvitationManagementAsync(
             invitation.ScopeType,
             invitation.ScopeId,
+            userId,
+            _currentUser.IsSuperAdmin,
+            _permissionEvaluator,
             cancellationToken);
-
-        if (!canRevoke)
-            throw new ForbiddenAccessException("You do not have permission to revoke invitations in this scope.");
-
-        if (invitation.ScopeType == ScopeType.Organization)
-        {
-            var orgRole = await _permissionEvaluator.GetUserRoleInScopeAsync(
-                userId,
-                ScopeType.Organization,
-                invitation.ScopeId,
-                cancellationToken);
-
-            if (!_currentUser.IsSuperAdmin && !string.Equals(orgRole, AppRoles.OrgAdmin, StringComparison.Ordinal))
-                throw new ForbiddenAccessException("Only OrgAdmin can manage organization invitations.");
-        }
 
         invitation.Revoke();
         await _invitationRepository.UpdateAsync(invitation, cancellationToken);

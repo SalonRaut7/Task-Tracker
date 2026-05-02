@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Epics.Queries.GetEpicById;
@@ -21,15 +22,6 @@ public sealed class GetEpicByIdQueryHandler : IRequestHandler<GetEpicByIdQuery, 
             return null;
         }
 
-        return new EpicDto
-        {
-            Id = epic.Id,
-            ProjectId = epic.ProjectId,
-            Title = epic.Title,
-            Description = epic.Description,
-            Status = epic.Status,
-            CreatedAt = epic.CreatedAt,
-            UpdatedAt = epic.UpdatedAt
-        };
+        return EpicDtoMapper.ToDto(epic);
     }
 }

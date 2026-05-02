@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Comments.Queries.GetComments;
@@ -27,12 +28,7 @@ public sealed class GetCommentsQueryHandler : IRequestHandler<GetCommentsQuery, 
 
         if (!_currentUser.IsSuperAdmin)
         {
-            var userId = _currentUser.UserId;
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                throw new UnauthorizedAccessException("Authentication is required.");
-            }
-
+            var userId = _currentUser.UserId!;
             var organizationIds = await _membershipRepository.GetUserOrganizationIdsAsync(userId, cancellationToken);
             var projectIds = await _membershipRepository.GetUserProjectIdsAsync(userId, cancellationToken);
 
@@ -53,16 +49,7 @@ public sealed class GetCommentsQueryHandler : IRequestHandler<GetCommentsQuery, 
 
         return await query
             .OrderByDescending(comment => comment.CreatedAt)
-            .Select(comment => new CommentDto
-            {
-                Id = comment.Id,
-                TaskId = comment.TaskId,
-                AuthorId = comment.AuthorId,
-                AuthorName = string.Concat(comment.Author.FirstName, " ", comment.Author.LastName).Trim(),
-                Content = comment.Content,
-                CreatedAt = comment.CreatedAt,
-                UpdatedAt = comment.UpdatedAt
-            })
+            .Select(CommentDtoMapper.Projection())
             .ToListAsync(cancellationToken);
     }
 }

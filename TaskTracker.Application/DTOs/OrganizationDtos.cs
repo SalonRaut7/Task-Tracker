@@ -7,10 +7,6 @@ public abstract class OrganizationBaseDto
     public string? Description { get; set; }
 }
 
-public sealed class CreateOrganizationDto : OrganizationBaseDto;
-
-public sealed class UpdateOrganizationDto : OrganizationBaseDto;
-
 public sealed class OrganizationDto : OrganizationBaseDto
 {
     public Guid Id { get; set; }

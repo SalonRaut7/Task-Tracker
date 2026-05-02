@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
 
@@ -30,15 +31,6 @@ public sealed class CreateEpicCommandHandler : IRequestHandler<CreateEpicCommand
 
         await _epicRepository.AddAsync(epic, cancellationToken);
 
-        return new EpicDto
-        {
-            Id = epic.Id,
-            ProjectId = epic.ProjectId,
-            Title = epic.Title,
-            Description = epic.Description,
-            Status = epic.Status,
-            CreatedAt = epic.CreatedAt,
-            UpdatedAt = epic.UpdatedAt
-        };
+        return EpicDtoMapper.ToDto(epic);
     }
 }

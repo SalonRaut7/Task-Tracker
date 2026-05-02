@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Sprints.Commands.UpdateSprint;
@@ -30,17 +31,6 @@ public sealed class UpdateSprintCommandHandler : IRequestHandler<UpdateSprintCom
 
         await _sprintRepository.UpdateAsync(sprint, cancellationToken);
 
-        return new SprintDto
-        {
-            Id = sprint.Id,
-            ProjectId = sprint.ProjectId,
-            Name = sprint.Name,
-            Goal = sprint.Goal,
-            StartDate = sprint.StartDate,
-            EndDate = sprint.EndDate,
-            Status = sprint.Status,
-            CreatedAt = sprint.CreatedAt,
-            UpdatedAt = sprint.UpdatedAt
-        };
+        return SprintDtoMapper.ToDto(sprint);
     }
 }

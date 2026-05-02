@@ -30,9 +30,6 @@ public sealed class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvit
 
     public async Task<AcceptInvitationResult> Handle(AcceptInvitationCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-            throw new UnauthorizedAccessException("You must be logged in to accept an invitation.");
-
         var tokenHash = _tokenService.HashToken(request.Token);
         var invitation = await _invitationRepository.GetByTokenHashAsync(tokenHash, cancellationToken);
 

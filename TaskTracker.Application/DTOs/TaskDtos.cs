@@ -13,24 +13,6 @@ namespace TaskTracker.Application.DTOs
         public DateOnly? EndDate { get; set; }
     }
 
-    // For creating a task
-    public class CreateTaskDto : TaskBaseDto
-    {
-        public Guid ProjectId { get; set; }
-        public Guid? EpicId { get; set; }
-        public Guid? SprintId { get; set; }
-        public string? AssigneeId { get; set; }
-    }
-
-    // For updating a task
-    public class UpdateTaskDto : TaskBaseDto
-    {
-        public Guid? EpicId { get; set; }
-        public Guid? SprintId { get; set; }
-        public string? AssigneeId { get; set; }
-        public int? EndDateExtensionDays { get; set; }
-    }
-
     // For returning task data to client
     public class TaskDto : TaskBaseDto
     {

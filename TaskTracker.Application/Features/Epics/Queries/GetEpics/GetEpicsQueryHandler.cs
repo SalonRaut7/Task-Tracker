@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Epics.Queries.GetEpics;
@@ -32,12 +33,7 @@ public sealed class GetEpicsQueryHandler : IRequestHandler<GetEpicsQuery, IReadO
 
         if (!_currentUser.IsSuperAdmin)
         {
-            var userId = _currentUser.UserId;
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                throw new UnauthorizedAccessException("Authentication is required.");
-            }
-
+            var userId = _currentUser.UserId!;
             var organizationIds = await _membershipRepository.GetUserOrganizationIdsAsync(userId, cancellationToken);
             if (organizationIds.Count == 0)
             {
@@ -49,16 +45,7 @@ public sealed class GetEpicsQueryHandler : IRequestHandler<GetEpicsQuery, IReadO
 
         return await query
             .OrderByDescending(epic => epic.CreatedAt)
-            .Select(epic => new EpicDto
-            {
-                Id = epic.Id,
-                ProjectId = epic.ProjectId,
-                Title = epic.Title,
-                Description = epic.Description,
-                Status = epic.Status,
-                CreatedAt = epic.CreatedAt,
-                UpdatedAt = epic.UpdatedAt
-            })
+            .Select(EpicDtoMapper.Projection())
             .ToListAsync(cancellationToken);
     }
 }

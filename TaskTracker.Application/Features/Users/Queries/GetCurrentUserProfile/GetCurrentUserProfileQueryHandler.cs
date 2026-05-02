@@ -1,4 +1,5 @@
 using MediatR;
+using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Domain.Interfaces;
 
@@ -19,12 +20,8 @@ public sealed class GetCurrentUserProfileQueryHandler : IRequestHandler<GetCurre
 
     public async Task<CurrentUserProfileDto> Handle(GetCurrentUserProfileQuery request, CancellationToken cancellationToken)
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-        {
-            throw new UnauthorizedAccessException("Authentication is required.");
-        }
-
-        var profile = await _userRepository.GetUserDetailsAsync(_currentUser.UserId, cancellationToken);
+        var userId = _currentUser.RequireUserId();
+        var profile = await _userRepository.GetUserDetailsAsync(userId, cancellationToken);
         if (profile is null)
         {
             throw new InvalidOperationException("Current user profile was not found.");

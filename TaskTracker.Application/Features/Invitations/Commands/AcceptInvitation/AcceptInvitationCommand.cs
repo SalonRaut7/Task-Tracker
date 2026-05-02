@@ -1,9 +1,10 @@
 using MediatR;
+using TaskTracker.Application.Authorization;
 using TaskTracker.Domain.Enums;
 
 namespace TaskTracker.Application.Features.Invitations.Commands.AcceptInvitation;
 
-public sealed class AcceptInvitationCommand : IRequest<AcceptInvitationResult>
+public sealed class AcceptInvitationCommand : IRequest<AcceptInvitationResult>, IAuthenticatedRequest
 {
     public string Token { get; set; } = string.Empty;
 }

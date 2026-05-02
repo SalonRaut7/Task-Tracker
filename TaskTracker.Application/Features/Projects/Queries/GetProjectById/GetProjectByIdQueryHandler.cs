@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Projects.Queries.GetProjectById;
@@ -21,15 +22,6 @@ public sealed class GetProjectByIdQueryHandler : IRequestHandler<GetProjectByIdQ
             return null;
         }
 
-        return new ProjectDto
-        {
-            Id = project.Id,
-            OrganizationId = project.OrganizationId,
-            Name = project.Name,
-            Key = project.Key,
-            Description = project.Description,
-            CreatedAt = project.CreatedAt,
-            UpdatedAt = project.UpdatedAt
-        };
+        return ProjectDtoMapper.ToDto(project);
     }
 }

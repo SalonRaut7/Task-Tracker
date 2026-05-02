@@ -22,17 +22,13 @@ public sealed class UpdateCurrentUserProfileCommandHandler : IRequestHandler<Upd
 
     public async Task<CurrentUserProfileDto> Handle(UpdateCurrentUserProfileCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-        {
-            throw new UnauthorizedAccessException("Authentication is required.");
-        }
-
         if (_currentUser.IsSuperAdmin)
         {
             throw new ForbiddenAccessException("SuperAdmin cannot update their own profile.");
         }
 
-        var user = await _userManager.FindByIdAsync(_currentUser.UserId);
+        var userId = _currentUser.RequireUserId();
+        var user = await _userManager.FindByIdAsync(userId);
         if (user is null)
         {
             throw new InvalidOperationException("Current user profile was not found.");

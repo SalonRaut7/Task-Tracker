@@ -9,13 +9,6 @@ public abstract class EpicBaseDto
     public Status Status { get; set; } = Status.NotStarted;
 }
 
-public sealed class CreateEpicDto : EpicBaseDto
-{
-    public Guid ProjectId { get; set; }
-}
-
-public sealed class UpdateEpicDto : EpicBaseDto;
-
 public sealed class EpicDto : EpicBaseDto
 {
     public Guid Id { get; set; }

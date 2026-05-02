@@ -1,7 +1,8 @@
 using MediatR;
+using TaskTracker.Application.Authorization;
 using TaskTracker.Domain.Interfaces;
 
-namespace TaskTracker.Application.Features.Notifications.Commands;
+namespace TaskTracker.Application.Features.Notifications.Commands.MarkAllNotificationsRead;
 
 public class MarkAllNotificationsReadCommandHandler : IRequestHandler<MarkAllNotificationsReadCommand, Unit>
 {
@@ -18,12 +19,8 @@ public class MarkAllNotificationsReadCommandHandler : IRequestHandler<MarkAllNot
 
     public async Task<Unit> Handle(MarkAllNotificationsReadCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-        {
-            throw new UnauthorizedAccessException("Authentication is required.");
-        }
-
-        await _notificationRepository.MarkAllAsReadAsync(_currentUser.UserId, cancellationToken);
+        var userId = _currentUser.RequireUserId();
+        await _notificationRepository.MarkAllAsReadAsync(userId, cancellationToken);
 
         return Unit.Value;
     }

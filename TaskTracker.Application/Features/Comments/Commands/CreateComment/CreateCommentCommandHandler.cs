@@ -1,6 +1,7 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Interfaces;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
 
@@ -27,11 +28,7 @@ public sealed class CreateCommentCommandHandler : IRequestHandler<CreateCommentC
 
     public async Task<CommentDto> Handle(CreateCommentCommand request, CancellationToken cancellationToken)
     {
-        var userId = _currentUser.UserId;
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            throw new UnauthorizedAccessException("Authentication is required.");
-        }
+        var userId = _currentUser.UserId!;
 
         var taskExists = await _commentRepository.TaskExistsAsync(request.TaskId, cancellationToken);
         if (!taskExists)
@@ -67,16 +64,9 @@ public sealed class CreateCommentCommandHandler : IRequestHandler<CreateCommentC
             throw new InvalidOperationException("Author details were not found.");
         }
 
-        var dto = new CommentDto
-        {
-            Id = comment.Id,
-            TaskId = comment.TaskId,
-            AuthorId = comment.AuthorId,
-            AuthorName = string.Concat(author.Value.FirstName, " ", author.Value.LastName).Trim(),
-            Content = comment.Content,
-            CreatedAt = comment.CreatedAt,
-            UpdatedAt = comment.UpdatedAt
-        };
+        var dto = CommentDtoMapper.ToDto(
+            comment,
+            string.Concat(author.Value.FirstName, " ", author.Value.LastName).Trim());
 
         await _pushService.BroadcastTaskCommentsChangedAsync(task.ProjectId, task.Id, cancellationToken);
 

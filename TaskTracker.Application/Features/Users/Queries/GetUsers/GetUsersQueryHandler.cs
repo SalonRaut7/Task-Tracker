@@ -58,11 +58,6 @@ public sealed class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, PagedR
 
     private void EnsureSuperAdmin()
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-        {
-            throw new UnauthorizedAccessException("Authentication is required.");
-        }
-
         if (!_currentUser.IsSuperAdmin)
         {
             throw new ForbiddenAccessException("Only SuperAdmin can access user administration.");

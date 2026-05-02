@@ -89,9 +89,7 @@ export function ProjectsPage() {
           take: pageSize,
         });
 
-        if (isCancelled) {
-          return;
-        }
+        if (isCancelled) return;
 
         setProjects(response.data);
         setTotalCount(response.totalCount);
@@ -99,9 +97,7 @@ export function ProjectsPage() {
         setProjectsApiMessage(response.message ?? "");
         setPageError("");
       } catch (error) {
-        if (isCancelled) {
-          return;
-        }
+        if (isCancelled) return;
 
         setProjects([]);
         setTotalCount(0);
@@ -129,87 +125,70 @@ export function ProjectsPage() {
   }, [organizations]);
 
   const selectedOrganizationLabel = useMemo(() => {
-    if (!editForm.organizationId) {
-      return "";
-    }
+    if (!editForm.organizationId) return "";
 
     const name = organizationNameById.get(editForm.organizationId);
-    if (name) {
-      return name;
-    }
-
-    if (loadingOrganizations) {
-      return "Loading organization...";
-    }
-
+    if (name) return name;
+    if (loadingOrganizations) return "Loading organization...";
     return "Unknown organization";
   }, [editForm.organizationId, organizationNameById, loadingOrganizations]);
 
-  const canDeleteProjectInScope = (projectId: string): boolean => {
-    return hasPermission(AppPermissions.ProjectsDelete, "Project", projectId);
-  };
+  const canDeleteProjectInScope = (projectId: string): boolean =>
+    hasPermission(AppPermissions.ProjectsDelete, "Project", projectId);
 
-  const canUpdateProjectInScope = (projectId: string): boolean => {
-    return hasPermission(AppPermissions.ProjectsUpdate, "Project", projectId);
-  };
+  const canUpdateProjectInScope = (projectId: string): boolean =>
+    hasPermission(AppPermissions.ProjectsUpdate, "Project", projectId);
 
-  const canViewMembersInScope = (projectId: string): boolean => {
-    return hasPermission(AppPermissions.MembersView, "Project", projectId);
-  };
+  const canViewMembersInScope = (projectId: string): boolean =>
+    hasPermission(AppPermissions.MembersView, "Project", projectId);
 
   const emptyState =
     projectsApiAvailable && !projectsLoading && !loadingData && projects.length === 0;
 
-  const loadOrganizations = async () => {
-    setLoadingOrganizations(true);
+  // ─── Fixed loadOrganizations with context param, no stale closures ───
+  const loadOrganizations = useCallback(
+    async (context: "create" | "edit" | "page") => {
+      setOrganizations([]); // reset first so DevExtreme sees a fresh array
+      setLoadingOrganizations(true);
 
-    if (showCreatePopup) {
-      setCreateError("");
-    }
+      if (context === "create") setCreateError("");
+      if (context === "edit") setEditError("");
 
-    if (selectedProject) {
-      setEditError("");
-    }
+      try {
+        const result = await getOrganizations();
 
-    try {
-      const result = await getOrganizations();
-      setOrganizations(result);
+        setOrganizations(result);
 
-      setCreateForm((prev) => {
-        if (prev.organizationId || result.length === 0) return prev;
-        return { ...prev, organizationId: result[0].id };
-      });
-    } catch (error) {
-      const message = getErrorMessage(error, "Failed to load organizations.");
+        if (context === "create") {
+          setCreateForm((prev) => {
+            if (prev.organizationId || result.length === 0) return prev;
+            return { ...prev, organizationId: String(result[0].id) };
+          });
+        }
+      } catch (error) {
+        const message = getErrorMessage(error, "Failed to load organizations.");
 
-      if (showCreatePopup) {
-        setCreateError(message);
-      } else if (selectedProject) {
-        setEditError(message);
-      } else {
-        setPageError(message);
+        if (context === "create") setCreateError(message);
+        else if (context === "edit") setEditError(message);
+        else setPageError(message);
+      } finally {
+        setLoadingOrganizations(false);
       }
-    } finally {
-      setLoadingOrganizations(false);
-    }
-  };
+    },
+    [],
+  );
 
   const openCreatePopup = () => {
     setCreateError("");
+    setCreateForm(emptyCreateForm);
     setShowCreatePopup(true);
-
-    if (organizations.length === 0) {
-      void loadOrganizations();
-    }
+    void loadOrganizations("create");
   };
 
   const closeCreatePopup = () => {
     setShowCreatePopup(false);
     setCreateError("");
-    setCreateForm((prev) => ({
-      ...emptyCreateForm,
-      organizationId: prev.organizationId,
-    }));
+    setCreateForm(emptyCreateForm);
   };
 
   const reloadProjects = useCallback(async () => {
@@ -277,7 +256,7 @@ export function ProjectsPage() {
     setEditError("");
 
     if (organizations.length === 0 && !loadingOrganizations) {
-      void loadOrganizations();
+      void loadOrganizations("edit");
     }
   };
 
@@ -352,6 +331,17 @@ export function ProjectsPage() {
       setDeletingProject(false);
     }
   };
+  const selectBoxDropDownOptions = useMemo(
+    () => ({
+      wrapperAttr: { class: "modal-selectbox-overlay" },
+    }),
+    []
+  );
+
+  const organizationItems = useMemo(
+    () => organizations.map((org) => ({ id: String(org.id), name: org.name })),
+    [organizations]
+  );
 
   return (
     <div className="page-stack">
@@ -375,7 +365,10 @@ export function ProjectsPage() {
       {!projectsApiAvailable && (
         <div className="card state-card warning-state">
           <h3>Projects endpoint unavailable</h3>
-          <p>{projectsApiMessage || "No /api/Projects endpoint is currently exposed by the backend."}</p>
+          <p>
+            {projectsApiMessage ||
+              "No /api/Projects endpoint is currently exposed by the backend."}
+          </p>
         </div>
       )}
 
@@ -439,7 +432,6 @@ export function ProjectsPage() {
                   data.updatedAt ? new Date(data.updatedAt).toLocaleDateString() : "-"
                 }
               />
-
               <Column
                 caption="Actions"
                 width={320}
@@ -518,7 +510,6 @@ export function ProjectsPage() {
           </>
         )}
       </section>
-
       <Modal
         visible={showCreatePopup}
         onClose={closeCreatePopup}
@@ -528,39 +519,28 @@ export function ProjectsPage() {
         <form className="popup-form" onSubmit={handleCreateProject}>
           {createError && <div className="form-error">{createError}</div>}
 
-          {organizations.length > 0 ? (
-            <label>
-              Organization
+          <label>
+            Organization
+            {loadingOrganizations ? (
+              <TextBox value="Loading organizations..." readOnly />
+            ) : (
               <SelectBox
-                dataSource={organizations}
+                key={`org-select-${organizations.length}`}
+                items={organizationItems}
                 displayExpr="name"
                 valueExpr="id"
                 value={createForm.organizationId || null}
-                disabled={loadingOrganizations}
-                onValueChanged={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    organizationId: String(event.value ?? ""),
-                  }))
-                }
+                disabled={loadingOrganizations || organizationItems.length === 0}
+                placeholder="Select an organization..."
+                showClearButton={false}
+                dropDownOptions={selectBoxDropDownOptions}
+                onValueChanged={(e) => {
+                  if (e.value == null) return;
+                  setCreateForm((prev) => ({ ...prev, organizationId: String(e.value) }));
+                }}
               />
-            </label>
-          ) : (
-            <label>
-              Organization Id
-              <TextBox
-                value={createForm.organizationId}
-                disabled={loadingOrganizations}
-                placeholder="Paste organization id"
-                onValueChanged={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    organizationId: String(event.value ?? ""),
-                  }))
-                }
-              />
-            </label>
-          )}
+            )}
+          </label>
 
           <label>
             Project Name
@@ -639,10 +619,7 @@ export function ProjectsPage() {
 
             <label>
               Organization
-              <TextBox
-                value={selectedOrganizationLabel}
-                readOnly
-              />
+              <TextBox value={selectedOrganizationLabel} readOnly />
             </label>
 
             <label>

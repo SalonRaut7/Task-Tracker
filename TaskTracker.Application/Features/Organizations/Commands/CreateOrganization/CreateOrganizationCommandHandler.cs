@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
@@ -32,14 +33,15 @@ public sealed class CreateOrganizationCommandHandler : IRequestHandler<CreateOrg
             UpdatedAt = now
         };
 
-        // Auto-assign creator as OrgAdmin — ensures immediate ownership
+        // Auto-assign creator as member — SuperAdmin keeps their global role label,
+        // non-SuperAdmin gets OrgAdmin for immediate ownership.
         if (!string.IsNullOrWhiteSpace(_currentUser.UserId))
         {
             organization.UserMemberships.Add(new UserOrganization
             {
                 UserId = _currentUser.UserId,
                 OrganizationId = organization.Id,
-                Role = AppRoles.OrgAdmin,
+                Role = _currentUser.IsSuperAdmin ? AppRoles.SuperAdmin : AppRoles.OrgAdmin,
                 JoinedAt = now,
                 UpdatedAt = now
             });
@@ -47,14 +49,6 @@ public sealed class CreateOrganizationCommandHandler : IRequestHandler<CreateOrg
 
         await _organizationRepository.AddAsync(organization, cancellationToken);
 
-        return new OrganizationDto
-        {
-            Id = organization.Id,
-            Name = organization.Name,
-            Slug = organization.Slug,
-            Description = organization.Description,
-            CreatedAt = organization.CreatedAt,
-            UpdatedAt = organization.UpdatedAt
-        };
+        return OrganizationDtoMapper.ToDto(organization);
     }
 }

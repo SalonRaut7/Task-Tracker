@@ -2,6 +2,7 @@ using MediatR;
 using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Interfaces;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
 
@@ -11,23 +12,20 @@ public sealed class UpdateOrganizationCommandHandler : IRequestHandler<UpdateOrg
 {
     private readonly IOrganizationRepository _organizationRepository;
     private readonly IMembershipRepository _membershipRepository;
-    private readonly INotificationRepository _notificationRepository;
-    private readonly INotificationPushService _pushService;
+    private readonly INotificationDispatchService _notificationDispatchService;
     private readonly ICurrentUserService _currentUser;
     private readonly IUserRepository _userRepository;
 
     public UpdateOrganizationCommandHandler(
         IOrganizationRepository organizationRepository,
         IMembershipRepository membershipRepository,
-        INotificationRepository notificationRepository,
-        INotificationPushService pushService,
+        INotificationDispatchService notificationDispatchService,
         ICurrentUserService currentUser,
         IUserRepository userRepository)
     {
         _organizationRepository = organizationRepository;
         _membershipRepository = membershipRepository;
-        _notificationRepository = notificationRepository;
-        _pushService = pushService;
+        _notificationDispatchService = notificationDispatchService;
         _currentUser = currentUser;
         _userRepository = userRepository;
     }
@@ -51,15 +49,7 @@ public sealed class UpdateOrganizationCommandHandler : IRequestHandler<UpdateOrg
 
         await _organizationRepository.UpdateAsync(organization, cancellationToken);
 
-        var dto = new OrganizationDto
-        {
-            Id = organization.Id,
-            Name = organization.Name,
-            Slug = organization.Slug,
-            Description = organization.Description,
-            CreatedAt = organization.CreatedAt,
-            UpdatedAt = organization.UpdatedAt
-        };
+        var dto = OrganizationDtoMapper.ToDto(organization);
 
         if (string.Equals(oldName, organization.Name, StringComparison.Ordinal)
             && string.Equals(oldSlug, organization.Slug, StringComparison.Ordinal)
@@ -81,62 +71,22 @@ public sealed class UpdateOrganizationCommandHandler : IRequestHandler<UpdateOrg
             .Concat(superAdminUserIds)
             .Distinct()
             .ToList();
-        var superAdminsOutsideOrganization = superAdminUserIds
-            .Except(organizationMemberUserIds, StringComparer.Ordinal)
-            .ToList();
 
-        var notifications = recipientUserIds.Select(recipientId => new Notification
-        {
-            Id = Guid.NewGuid(),
-            RecipientUserId = recipientId,
-            ActorUserId = actorUserId,
-            ActorName = actorName,
-            Type = "OrganizationUpdated",
-            Message = message,
-            TaskId = null,
-            ProjectId = null,
-            IsRead = string.Equals(recipientId, actorUserId, StringComparison.Ordinal),
-            CreatedAt = DateTime.UtcNow,
-        }).ToList();
+        var nowUtc = DateTime.UtcNow;
+        var notifications = recipientUserIds.Select(recipientId => Notification.Create(
+            recipientId,
+            actorUserId,
+            actorName,
+            "OrganizationUpdated",
+            message,
+            null,
+            null,
+            string.Equals(recipientId, actorUserId, StringComparison.Ordinal),
+            nowUtc)).ToList();
 
         if (notifications.Count > 0)
         {
-            await _notificationRepository.AddRangeAsync(notifications, cancellationToken);
-
-            await _pushService.SendToOrganizationAsync(
-                organization.Id,
-                new NotificationDto
-                {
-                    Id = Guid.NewGuid(),
-                    ActorUserId = actorUserId,
-                    ActorName = actorName,
-                    Type = "OrganizationUpdated",
-                    Message = message,
-                    TaskId = null,
-                    ProjectId = null,
-                    IsRead = false,
-                    CreatedAt = DateTime.UtcNow,
-                },
-                cancellationToken);
-
-            foreach (var userId in superAdminsOutsideOrganization)
-            {
-                await _pushService.SendToUserAsync(
-                    userId,
-                    new NotificationDto
-                    {
-                        Id = Guid.NewGuid(),
-                        ActorUserId = actorUserId,
-                        ActorName = actorName,
-                        Type = "OrganizationUpdated",
-                        Message = message,
-                        TaskId = null,
-                        ProjectId = null,
-                        IsRead = string.Equals(userId, actorUserId, StringComparison.Ordinal),
-                        CreatedAt = DateTime.UtcNow,
-                    },
-                    cancellationToken);
-            }
+            await _notificationDispatchService.DispatchAsync(notifications, cancellationToken);
         }
 
         return dto;

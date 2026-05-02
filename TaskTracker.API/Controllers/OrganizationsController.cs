@@ -42,28 +42,18 @@ public class OrganizationsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<OrganizationDto>> Create([FromBody] CreateOrganizationDto dto, CancellationToken cancellationToken)
+    public async Task<ActionResult<OrganizationDto>> Create([FromBody] CreateOrganizationCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new CreateOrganizationCommand
-        {
-            Name = dto.Name,
-            Slug = dto.Slug,
-            Description = dto.Description
-        }, cancellationToken);
+        var result = await _mediator.Send(command, cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<OrganizationDto>> Update([FromRoute] Guid id, [FromBody] UpdateOrganizationDto dto, CancellationToken cancellationToken)
+    public async Task<ActionResult<OrganizationDto>> Update([FromRoute] Guid id, [FromBody] UpdateOrganizationCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new UpdateOrganizationCommand
-        {
-            Id = id,
-            Name = dto.Name,
-            Slug = dto.Slug,
-            Description = dto.Description
-        }, cancellationToken);
+        command.Id = id;
+        var result = await _mediator.Send(command, cancellationToken);
 
         if (result is null)
         {

@@ -42,33 +42,18 @@ public class SprintsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<SprintDto>> Create([FromBody] CreateSprintDto dto, CancellationToken cancellationToken)
+    public async Task<ActionResult<SprintDto>> Create([FromBody] CreateSprintCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new CreateSprintCommand
-        {
-            ProjectId = dto.ProjectId,
-            Name = dto.Name,
-            Goal = dto.Goal,
-            StartDate = dto.StartDate,
-            EndDate = dto.EndDate,
-            Status = dto.Status
-        }, cancellationToken);
+        var result = await _mediator.Send(command, cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<SprintDto>> Update([FromRoute] Guid id, [FromBody] UpdateSprintDto dto, CancellationToken cancellationToken)
+    public async Task<ActionResult<SprintDto>> Update([FromRoute] Guid id, [FromBody] UpdateSprintCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new UpdateSprintCommand
-        {
-            Id = id,
-            Name = dto.Name,
-            Goal = dto.Goal,
-            StartDate = dto.StartDate,
-            EndDate = dto.EndDate,
-            Status = dto.Status
-        }, cancellationToken);
+        command.Id = id;
+        var result = await _mediator.Send(command, cancellationToken);
 
         if (result is null)
         {

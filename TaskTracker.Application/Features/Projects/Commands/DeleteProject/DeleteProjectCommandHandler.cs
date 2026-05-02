@@ -1,6 +1,5 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
-using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
@@ -11,23 +10,20 @@ public sealed class DeleteProjectCommandHandler : IRequestHandler<DeleteProjectC
 {
     private readonly IProjectRepository _projectRepository;
     private readonly IMembershipRepository _membershipRepository;
-    private readonly INotificationRepository _notificationRepository;
-    private readonly INotificationPushService _pushService;
+    private readonly INotificationDispatchService _notificationDispatchService;
     private readonly ICurrentUserService _currentUser;
     private readonly IUserRepository _userRepository;
 
     public DeleteProjectCommandHandler(
         IProjectRepository projectRepository,
         IMembershipRepository membershipRepository,
-        INotificationRepository notificationRepository,
-        INotificationPushService pushService,
+        INotificationDispatchService notificationDispatchService,
         ICurrentUserService currentUser,
         IUserRepository userRepository)
     {
         _projectRepository = projectRepository;
         _membershipRepository = membershipRepository;
-        _notificationRepository = notificationRepository;
-        _pushService = pushService;
+        _notificationDispatchService = notificationDispatchService;
         _currentUser = currentUser;
         _userRepository = userRepository;
     }
@@ -47,9 +43,6 @@ public sealed class DeleteProjectCommandHandler : IRequestHandler<DeleteProjectC
             .Concat(superAdminUserIds)
             .Distinct()
             .ToList();
-        var superAdminsOutsideProject = superAdminUserIds
-            .Except(projectMemberUserIds, StringComparer.Ordinal)
-            .ToList();
 
         var actorUserId = _currentUser.UserId;
         var actorName = !string.IsNullOrWhiteSpace(actorUserId)
@@ -61,56 +54,19 @@ public sealed class DeleteProjectCommandHandler : IRequestHandler<DeleteProjectC
 
         if (recipientUserIds.Count > 0)
         {
-            var notifications = recipientUserIds.Select(recipientId => new Notification
-            {
-                Id = Guid.NewGuid(),
-                RecipientUserId = recipientId,
-                ActorUserId = actorUserId,
-                ActorName = actorName,
-                Type = "ProjectDeleted",
-                Message = message,
-                TaskId = null,
-                ProjectId = project.Id,
-                IsRead = string.Equals(recipientId, actorUserId, StringComparison.Ordinal),
-                CreatedAt = DateTime.UtcNow,
-            }).ToList();
-
-            await _notificationRepository.AddRangeAsync(notifications, cancellationToken);
-
-            await _pushService.SendToProjectAsync(
+            var nowUtc = DateTime.UtcNow;
+            var notifications = recipientUserIds.Select(recipientId => Notification.Create(
+                recipientId,
+                actorUserId,
+                actorName,
+                "ProjectDeleted",
+                message,
+                null,
                 project.Id,
-                new NotificationDto
-                {
-                    Id = Guid.NewGuid(),
-                    ActorUserId = actorUserId,
-                    ActorName = actorName,
-                    Type = "ProjectDeleted",
-                    Message = message,
-                    TaskId = null,
-                    ProjectId = project.Id,
-                    IsRead = false,
-                    CreatedAt = DateTime.UtcNow,
-                },
-                cancellationToken);
+                string.Equals(recipientId, actorUserId, StringComparison.Ordinal),
+                nowUtc)).ToList();
 
-            foreach (var userId in superAdminsOutsideProject)
-            {
-                await _pushService.SendToUserAsync(
-                    userId,
-                    new NotificationDto
-                    {
-                        Id = Guid.NewGuid(),
-                        ActorUserId = actorUserId,
-                        ActorName = actorName,
-                        Type = "ProjectDeleted",
-                        Message = message,
-                        TaskId = null,
-                        ProjectId = project.Id,
-                        IsRead = string.Equals(userId, actorUserId, StringComparison.Ordinal),
-                        CreatedAt = DateTime.UtcNow,
-                    },
-                    cancellationToken);
-            }
+            await _notificationDispatchService.DispatchAsync(notifications, cancellationToken);
         }
 
         return true;

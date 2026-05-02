@@ -1,6 +1,5 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
-using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
@@ -14,20 +13,20 @@ namespace TaskTracker.Application.Features.Tasks.Notifications;
 /// 4. Broadcasting task data changes for live dashboard/task-list sync
 public class TaskChangedNotificationHandler : INotificationHandler<TaskChangedNotification>
 {
-    private readonly INotificationRepository _notificationRepository;
+    private readonly INotificationDispatchService _notificationDispatchService;
     private readonly IMembershipRepository _membershipRepository;
     private readonly IUserRepository _userRepository;
     private readonly INotificationPushService _pushService;
     private readonly ILogger<TaskChangedNotificationHandler> _logger;
 
     public TaskChangedNotificationHandler(
-        INotificationRepository notificationRepository,
+        INotificationDispatchService notificationDispatchService,
         IMembershipRepository membershipRepository,
         IUserRepository userRepository,
         INotificationPushService pushService,
         ILogger<TaskChangedNotificationHandler> logger)
     {
-        _notificationRepository = notificationRepository;
+        _notificationDispatchService = notificationDispatchService;
         _membershipRepository = membershipRepository;
         _userRepository = userRepository;
         _pushService = pushService;
@@ -38,7 +37,13 @@ public class TaskChangedNotificationHandler : INotificationHandler<TaskChangedNo
     {
         try
         {
-            var message = BuildMessage(notification);
+            var actorName = notification.ActorName;
+            if (string.IsNullOrWhiteSpace(actorName) && !string.IsNullOrWhiteSpace(notification.ActorUserId))
+            {
+                actorName = await _userRepository.GetFullNameAsync(notification.ActorUserId, cancellationToken) ?? "Unknown";
+            }
+
+            var message = BuildMessage(notification, actorName);
             var notificationType = ResolveNotificationType(notification);
 
             // Get all project members to determine recipients
@@ -59,80 +64,19 @@ public class TaskChangedNotificationHandler : INotificationHandler<TaskChangedNo
                 .ToList();
 
             // Persist notifications for each recipient
-            var notificationEntities = recipientUserIds.Select(recipientId => new Notification
-            {
-                Id = Guid.NewGuid(),
-                RecipientUserId = recipientId,
-                ActorUserId = notification.ActorUserId,
-                ActorName = notification.ActorName,
-                Type = notificationType,
-                Message = message,
-                TaskId = notification.TaskId,
-                ProjectId = notification.ProjectId,
-                IsRead = string.Equals(recipientId, notification.ActorUserId, StringComparison.Ordinal),
-                CreatedAt = DateTime.UtcNow,
-            }).ToList();
+            var nowUtc = DateTime.UtcNow;
+            var notificationEntities = recipientUserIds.Select(recipientId => Notification.Create(
+                recipientId,
+                notification.ActorUserId,
+                actorName,
+                notificationType,
+                message,
+                notification.TaskId,
+                notification.ProjectId,
+                string.Equals(recipientId, notification.ActorUserId, StringComparison.Ordinal),
+                nowUtc)).ToList();
 
-            if (notificationEntities.Count > 0)
-            {
-                await _notificationRepository.AddRangeAsync(notificationEntities, cancellationToken);
-            }
-
-            // Build DTO for the SignalR push (use first entity as template)
-            var pushDto = new NotificationDto
-            {
-                Id = Guid.NewGuid(), // Each client gets a unique push ID
-                ActorUserId = notification.ActorUserId,
-                ActorName = notification.ActorName,
-                Type = notificationType,
-                Message = message,
-                TaskId = notification.TaskId,
-                ProjectId = notification.ProjectId,
-                IsRead = false,
-                CreatedAt = DateTime.UtcNow,
-            };
-
-            // Push notification to project group (all members see it)
-            await _pushService.SendToProjectAsync(notification.ProjectId, pushDto, cancellationToken);
-
-            // SuperAdmins not in the project group still need a real-time push.
-            foreach (var userId in superAdminsOutsideProject)
-            {
-                await _pushService.SendToUserAsync(
-                    userId,
-                    new NotificationDto
-                    {
-                        Id = Guid.NewGuid(),
-                        ActorUserId = notification.ActorUserId,
-                        ActorName = notification.ActorName,
-                        Type = notificationType,
-                        Message = message,
-                        TaskId = notification.TaskId,
-                        ProjectId = notification.ProjectId,
-                        IsRead = string.Equals(userId, notification.ActorUserId, StringComparison.Ordinal),
-                        CreatedAt = DateTime.UtcNow,
-                    },
-                    cancellationToken);
-            }
-
-            // If task was reassigned, send a direct notification to the new assignee
-            if (notification.EventType == "Reassigned" && !string.IsNullOrWhiteSpace(notification.NewAssigneeId))
-            {
-                var reassignDto = new NotificationDto
-                {
-                    Id = Guid.NewGuid(),
-                    ActorUserId = notification.ActorUserId,
-                    ActorName = notification.ActorName,
-                    Type = "TaskReassigned",
-                    Message = $"TASK-{notification.TaskId} was assigned to you by {notification.ActorName}",
-                    TaskId = notification.TaskId,
-                    ProjectId = notification.ProjectId,
-                    IsRead = false,
-                    CreatedAt = DateTime.UtcNow,
-                };
-
-                await _pushService.SendToUserAsync(notification.NewAssigneeId, reassignDto, cancellationToken);
-            }
+            await _notificationDispatchService.DispatchAsync(notificationEntities, cancellationToken);
 
             // Broadcast task data changes for live dashboard/task-list sync
             switch (notification.EventType)
@@ -170,12 +114,6 @@ public class TaskChangedNotificationHandler : INotificationHandler<TaskChangedNo
                     break;
             }
 
-            // Prune old notifications for each recipient
-            foreach (var recipientId in recipientUserIds)
-            {
-                await _notificationRepository.PruneAsync(recipientId, cancellationToken);
-            }
-
             _logger.LogInformation(
                 "Published {EventType} notification for TASK-{TaskId} in project {ProjectId} to {RecipientCount} recipients",
                 notification.EventType, notification.TaskId, notification.ProjectId, recipientUserIds.Count);
@@ -189,7 +127,7 @@ public class TaskChangedNotificationHandler : INotificationHandler<TaskChangedNo
         }
     }
 
-    private static string BuildMessage(TaskChangedNotification notification)
+    private static string BuildMessage(TaskChangedNotification notification, string actorName)
     {
         var taskRef = $"TASK-{notification.TaskId}";
         var taskLabel = string.IsNullOrWhiteSpace(notification.TaskTitle)
@@ -198,45 +136,46 @@ public class TaskChangedNotificationHandler : INotificationHandler<TaskChangedNo
 
         return notification.EventType switch
         {
-            "Created" => $"{notification.ActorName} created {taskLabel}",
-            "Updated" => $"{notification.ActorName} updated {taskLabel}",
-            "Deleted" => $"{notification.ActorName} deleted {taskLabel}",
-            "StatusChanged" => BuildUpdateMessage(notification, taskLabel, "changed status of"),
-            "Reassigned" => BuildUpdateMessage(notification, taskLabel, "reassigned"),
-            _ => $"{notification.ActorName} modified {taskLabel}",
+            "Created" => $"{actorName} created {taskLabel}",
+            "Updated" => $"{actorName} updated {taskLabel}",
+            "Deleted" => $"{actorName} deleted {taskLabel}",
+            "StatusChanged" => BuildUpdateMessage(notification, taskLabel, "changed status of", actorName),
+            "Reassigned" => BuildUpdateMessage(notification, taskLabel, "reassigned", actorName),
+            _ => $"{actorName} modified {taskLabel}",
         };
     }
 
     private static string BuildUpdateMessage(
         TaskChangedNotification notification,
         string taskLabel,
-        string actionVerb)
+        string actionVerb,
+        string actorName)
     {
         var changeDetails = BuildChangeDetails(notification.ChangedFields);
 
         if (changeDetails.Count == 0)
         {
-            return $"{notification.ActorName} {actionVerb} {taskLabel}";
+            return $"{actorName} {actionVerb} {taskLabel}";
         }
 
         if (string.Equals(actionVerb, "reassigned", StringComparison.OrdinalIgnoreCase))
         {
-            return $"{notification.ActorName} reassigned {taskLabel}: {string.Join("; ", changeDetails.Select(FormatChange))}";
+            return $"{actorName} reassigned {taskLabel}: {string.Join("; ", changeDetails.Select(FormatChange))}";
         }
 
         if (changeDetails.Count == 1 &&
             string.Equals(changeDetails[0].FieldName, "Description", StringComparison.OrdinalIgnoreCase))
         {
-            return $"{notification.ActorName} updated {taskLabel}: Description updated to {changeDetails[0].NewValue}";
+            return $"{actorName} updated {taskLabel}: Description updated to {changeDetails[0].NewValue}";
         }
 
         if (changeDetails.Count == 1 &&
             string.Equals(changeDetails[0].FieldName, "Status", StringComparison.OrdinalIgnoreCase))
         {
-            return $"{notification.ActorName} changed status of {taskLabel} from {changeDetails[0].OldValue} to {changeDetails[0].NewValue}";
+            return $"{actorName} changed status of {taskLabel} from {changeDetails[0].OldValue} to {changeDetails[0].NewValue}";
         }
 
-        return $"{notification.ActorName} {actionVerb} {taskLabel}: {string.Join("; ", changeDetails.Select(FormatChange))}";
+        return $"{actorName} {actionVerb} {taskLabel}: {string.Join("; ", changeDetails.Select(FormatChange))}";
     }
 
     private static List<TaskFieldChange> BuildChangeDetails(IReadOnlyList<TaskFieldChange> changes)

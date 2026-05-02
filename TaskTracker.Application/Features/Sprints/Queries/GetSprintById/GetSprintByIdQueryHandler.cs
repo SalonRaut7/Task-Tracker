@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Sprints.Queries.GetSprintById;
@@ -21,17 +22,6 @@ public sealed class GetSprintByIdQueryHandler : IRequestHandler<GetSprintByIdQue
             return null;
         }
 
-        return new SprintDto
-        {
-            Id = sprint.Id,
-            ProjectId = sprint.ProjectId,
-            Name = sprint.Name,
-            Goal = sprint.Goal,
-            StartDate = sprint.StartDate,
-            EndDate = sprint.EndDate,
-            Status = sprint.Status,
-            CreatedAt = sprint.CreatedAt,
-            UpdatedAt = sprint.UpdatedAt
-        };
+        return SprintDtoMapper.ToDto(sprint);
     }
 }

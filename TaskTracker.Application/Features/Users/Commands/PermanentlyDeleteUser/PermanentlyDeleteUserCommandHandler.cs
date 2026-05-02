@@ -57,16 +57,11 @@ public sealed class PermanentlyDeleteUserCommandHandler : IRequestHandler<Perman
 
     private string EnsureSuperAdmin()
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-        {
-            throw new UnauthorizedAccessException("Authentication is required.");
-        }
-
         if (!_currentUser.IsSuperAdmin)
         {
             throw new ForbiddenAccessException("Only SuperAdmin can manage users.");
         }
 
-        return _currentUser.UserId;
+        return _currentUser.UserId!;
     }
 }

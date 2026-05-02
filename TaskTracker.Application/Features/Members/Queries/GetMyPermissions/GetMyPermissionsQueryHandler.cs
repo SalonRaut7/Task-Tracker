@@ -20,9 +20,7 @@ public sealed class GetMyPermissionsQueryHandler : IRequestHandler<GetMyPermissi
 
     public async Task<UserPermissionsDto> Handle(GetMyPermissionsQuery request, CancellationToken cancellationToken)
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-            throw new UnauthorizedAccessException("Authentication is required.");
-
-        return await _permissionEvaluator.GetUserPermissionsAsync(_currentUser.UserId, cancellationToken);
+        var userId = _currentUser.RequireUserId();
+        return await _permissionEvaluator.GetUserPermissionsAsync(userId, cancellationToken);
     }
 }

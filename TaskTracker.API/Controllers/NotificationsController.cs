@@ -2,8 +2,9 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaskTracker.Application.DTOs;
-using TaskTracker.Application.Features.Notifications.Commands;
-using TaskTracker.Application.Features.Notifications.Queries;
+using TaskTracker.Application.Features.Notifications.Commands.MarkAllNotificationsRead;
+using TaskTracker.Application.Features.Notifications.Commands.MarkNotificationRead;
+using TaskTracker.Application.Features.Notifications.Queries.GetNotifications;
 
 namespace TaskTracker.API.Controllers;
 

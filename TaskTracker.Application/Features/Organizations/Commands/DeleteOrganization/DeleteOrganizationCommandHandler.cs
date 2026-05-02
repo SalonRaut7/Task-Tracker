@@ -1,6 +1,5 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
-using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
@@ -11,23 +10,20 @@ public sealed class DeleteOrganizationCommandHandler : IRequestHandler<DeleteOrg
 {
     private readonly IOrganizationRepository _organizationRepository;
     private readonly IMembershipRepository _membershipRepository;
-    private readonly INotificationRepository _notificationRepository;
-    private readonly INotificationPushService _pushService;
+    private readonly INotificationDispatchService _notificationDispatchService;
     private readonly ICurrentUserService _currentUser;
     private readonly IUserRepository _userRepository;
 
     public DeleteOrganizationCommandHandler(
         IOrganizationRepository organizationRepository,
         IMembershipRepository membershipRepository,
-        INotificationRepository notificationRepository,
-        INotificationPushService pushService,
+        INotificationDispatchService notificationDispatchService,
         ICurrentUserService currentUser,
         IUserRepository userRepository)
     {
         _organizationRepository = organizationRepository;
         _membershipRepository = membershipRepository;
-        _notificationRepository = notificationRepository;
-        _pushService = pushService;
+        _notificationDispatchService = notificationDispatchService;
         _currentUser = currentUser;
         _userRepository = userRepository;
     }
@@ -47,9 +43,6 @@ public sealed class DeleteOrganizationCommandHandler : IRequestHandler<DeleteOrg
             .Concat(superAdminUserIds)
             .Distinct()
             .ToList();
-        var superAdminsOutsideOrganization = superAdminUserIds
-            .Except(organizationMemberUserIds, StringComparer.Ordinal)
-            .ToList();
 
         var actorUserId = _currentUser.UserId;
         var actorName = !string.IsNullOrWhiteSpace(actorUserId)
@@ -61,56 +54,19 @@ public sealed class DeleteOrganizationCommandHandler : IRequestHandler<DeleteOrg
 
         if (recipientUserIds.Count > 0)
         {
-            var notifications = recipientUserIds.Select(recipientId => new Notification
-            {
-                Id = Guid.NewGuid(),
-                RecipientUserId = recipientId,
-                ActorUserId = actorUserId,
-                ActorName = actorName,
-                Type = "OrganizationDeleted",
-                Message = message,
-                TaskId = null,
-                ProjectId = null,
-                IsRead = string.Equals(recipientId, actorUserId, StringComparison.Ordinal),
-                CreatedAt = DateTime.UtcNow,
-            }).ToList();
+            var nowUtc = DateTime.UtcNow;
+            var notifications = recipientUserIds.Select(recipientId => Notification.Create(
+                recipientId,
+                actorUserId,
+                actorName,
+                "OrganizationDeleted",
+                message,
+                null,
+                null,
+                string.Equals(recipientId, actorUserId, StringComparison.Ordinal),
+                nowUtc)).ToList();
 
-            await _notificationRepository.AddRangeAsync(notifications, cancellationToken);
-
-            await _pushService.SendToOrganizationAsync(
-                organization.Id,
-                new NotificationDto
-                {
-                    Id = Guid.NewGuid(),
-                    ActorUserId = actorUserId,
-                    ActorName = actorName,
-                    Type = "OrganizationDeleted",
-                    Message = message,
-                    TaskId = null,
-                    ProjectId = null,
-                    IsRead = false,
-                    CreatedAt = DateTime.UtcNow,
-                },
-                cancellationToken);
-
-            foreach (var userId in superAdminsOutsideOrganization)
-            {
-                await _pushService.SendToUserAsync(
-                    userId,
-                    new NotificationDto
-                    {
-                        Id = Guid.NewGuid(),
-                        ActorUserId = actorUserId,
-                        ActorName = actorName,
-                        Type = "OrganizationDeleted",
-                        Message = message,
-                        TaskId = null,
-                        ProjectId = null,
-                        IsRead = string.Equals(userId, actorUserId, StringComparison.Ordinal),
-                        CreatedAt = DateTime.UtcNow,
-                    },
-                    cancellationToken);
-            }
+            await _notificationDispatchService.DispatchAsync(notifications, cancellationToken);
         }
 
         return true;

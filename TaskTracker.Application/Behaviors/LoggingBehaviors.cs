@@ -22,10 +22,19 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
         var requestName = typeof(TRequest).Name;
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation(
-            "Handling request {RequestName} with payload {@Request}",
-            requestName,
-            request);
+        if (ShouldLogPayload(request))
+        {
+            _logger.LogInformation(
+                "Handling request {RequestName} with payload {@Request}",
+                requestName,
+                request);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Handling sensitive request {RequestName} with payload redacted",
+                requestName);
+        }
 
         try
         {
@@ -52,5 +61,23 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
 
             throw;
         }
+    }
+
+    private static bool ShouldLogPayload(TRequest request)
+    {
+        var sensitivePropertyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Password",
+            "NewPassword",
+            "RefreshToken",
+            "Token",
+            "OtpCode",
+            "Code"
+        };
+
+        return !request!
+            .GetType()
+            .GetProperties()
+            .Any(property => sensitivePropertyNames.Contains(property.Name));
     }
 }
