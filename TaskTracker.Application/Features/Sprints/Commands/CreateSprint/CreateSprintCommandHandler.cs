@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
 
@@ -32,17 +33,6 @@ public sealed class CreateSprintCommandHandler : IRequestHandler<CreateSprintCom
 
         await _sprintRepository.AddAsync(sprint, cancellationToken);
 
-        return new SprintDto
-        {
-            Id = sprint.Id,
-            ProjectId = sprint.ProjectId,
-            Name = sprint.Name,
-            Goal = sprint.Goal,
-            StartDate = sprint.StartDate,
-            EndDate = sprint.EndDate,
-            Status = sprint.Status,
-            CreatedAt = sprint.CreatedAt,
-            UpdatedAt = sprint.UpdatedAt
-        };
+        return SprintDtoMapper.ToDto(sprint);
     }
 }

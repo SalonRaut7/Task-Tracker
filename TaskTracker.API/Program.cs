@@ -8,11 +8,11 @@ using TaskTracker.Infrastructure.Data;
 using TaskTracker.Infrastructure.Repositories;
 using TaskTracker.Infrastructure;
 using TaskTracker.Application.Features.Tasks.Commands.CreateTask;
-using TaskTracker.Application.Mappings;
 using TaskTracker.Application.Options;
+using TaskTracker.Application.Interfaces;
+using TaskTracker.Application.Services;
 using TaskTracker.Application.Behaviors;
 using TaskTracker.API.Middlewares;
-using TaskTracker.API.Authorization;
 using TaskTracker.Domain.Entities.Identity;
 using TaskTracker.Infrastructure.Data.Seed;
 using MediatR;
@@ -85,19 +85,12 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// ── Authorization (Permission-based policies) ────────────────────
-builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
-builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
-
 // ── MediatR + FluentValidation ───────────────────────────────────
 builder.Services.AddMediatR(typeof(CreateTaskCommand).Assembly);
 builder.Services.AddValidatorsFromAssembly(typeof(CreateTaskCommand).Assembly);
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(AuthorizationBehavior<,>));
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-
-// ── AutoMapper ───────────────────────────────────────────────────
-builder.Services.AddAutoMapper(typeof(AutoMapperProfile).Assembly);
 
 // ── HTTP Context ─────────────────────────────────────────────────
 builder.Services.AddHttpContextAccessor();
@@ -110,6 +103,7 @@ builder.Services.AddSwaggerGen();
 // ── SignalR ──────────────────────────────────────────────────────
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<TaskTracker.Infrastructure.Services.DueDateMonitorService>();
+builder.Services.AddScoped<INotificationDispatchService, NotificationDispatchService>();
 
 // ── CORS ─────────────────────────────────────────────────────────
 builder.Services.AddCors(options =>

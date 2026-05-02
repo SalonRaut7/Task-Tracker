@@ -11,6 +11,7 @@ public sealed class CreateSprintCommandValidator : AbstractValidator<CreateSprin
 
         RuleFor(x => x.Name)
             .NotEmpty().WithMessage("Sprint name is required.")
+            .Matches(@"[a-zA-Z]").WithMessage("Sprint name must contain at least one letter.")
             .MaximumLength(200).WithMessage("Sprint name cannot exceed 200 characters.");
 
         RuleFor(x => x.Goal)

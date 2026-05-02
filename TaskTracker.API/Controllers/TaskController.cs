@@ -7,7 +7,6 @@ using TaskTracker.Application.Features.Tasks.Commands.DeleteTask;
 using TaskTracker.Application.Features.Tasks.Queries.GetAllTasks;
 using TaskTracker.Application.Features.Tasks.Queries.GetTaskById;
 using MediatR;
-using AutoMapper;
 
 namespace TaskTracker.API.Controllers
 {
@@ -17,12 +16,10 @@ namespace TaskTracker.API.Controllers
     public class TasksController : ControllerBase
     {
         private readonly IMediator _mediator;
-        private readonly IMapper _mapper;
 
-        public TasksController(IMediator mediator, IMapper mapper)
+        public TasksController(IMediator mediator)
         {
             _mediator = mediator;
-            _mapper = mapper;
         }
 
         // GET: api/tasks
@@ -44,23 +41,16 @@ namespace TaskTracker.API.Controllers
 
         // POST: api/tasks
         [HttpPost]
-        public async Task<ActionResult<TaskDto>> Create([FromBody] CreateTaskDto dto, CancellationToken cancellationToken)
+        public async Task<ActionResult<TaskDto>> Create([FromBody] CreateTaskCommand command, CancellationToken cancellationToken)
         {
-            // Map DTO -> Command
-            var command = _mapper.Map<CreateTaskCommand>(dto);
-
-            // Send command via MediatR
             var task = await _mediator.Send(command, cancellationToken);
-
-            // Return 201 with location
             return CreatedAtAction(nameof(GetById), new { id = task.Id, projectId = task.ProjectId }, task);
         }
 
         // PUT: api/tasks/{id}
         [HttpPut("{id}")]
-        public async Task<ActionResult<TaskDto>> Update([FromRoute] int id, [FromQuery] Guid projectId, [FromBody] UpdateTaskDto dto, CancellationToken cancellationToken)
+        public async Task<ActionResult<TaskDto>> Update([FromRoute] int id, [FromQuery] Guid projectId, [FromBody] UpdateTaskCommand command, CancellationToken cancellationToken)
         {
-            var command = _mapper.Map<UpdateTaskCommand>(dto);
             command.Id = id;
             command.ProjectId = projectId;
 

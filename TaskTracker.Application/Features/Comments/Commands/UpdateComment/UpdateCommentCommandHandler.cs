@@ -2,6 +2,7 @@ using MediatR;
 using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Interfaces;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Interfaces;
 
@@ -38,11 +39,6 @@ public sealed class UpdateCommentCommandHandler : IRequestHandler<UpdateCommentC
         }
 
         // Check ownership: user must be the author or have higher role
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-        {
-            throw new UnauthorizedAccessException("Authentication is required.");
-        }
-
         var userId = _currentUser.UserId!;
         var isAuthor = string.Equals(comment.AuthorId, userId, StringComparison.Ordinal);
 
@@ -83,16 +79,9 @@ public sealed class UpdateCommentCommandHandler : IRequestHandler<UpdateCommentC
             throw new InvalidOperationException("Author details were not found.");
         }
 
-        var dto = new CommentDto
-        {
-            Id = comment.Id,
-            TaskId = comment.TaskId,
-            AuthorId = comment.AuthorId,
-            AuthorName = string.Concat(author.Value.FirstName, " ", author.Value.LastName).Trim(),
-            Content = comment.Content,
-            CreatedAt = comment.CreatedAt,
-            UpdatedAt = comment.UpdatedAt
-        };
+        var dto = CommentDtoMapper.ToDto(
+            comment,
+            string.Concat(author.Value.FirstName, " ", author.Value.LastName).Trim());
 
         var commentTaskForBroadcast = await _taskRepository.GetByIdAsync(comment.TaskId, cancellationToken);
         if (commentTaskForBroadcast is not null)

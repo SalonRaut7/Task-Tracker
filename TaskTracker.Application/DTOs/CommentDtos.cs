@@ -1,16 +1,5 @@
 namespace TaskTracker.Application.DTOs;
 
-public sealed class CreateCommentDto
-{
-    public int TaskId { get; set; }
-    public string Content { get; set; } = string.Empty;
-}
-
-public sealed class UpdateCommentDto
-{
-    public string Content { get; set; } = string.Empty;
-}
-
 public sealed class CommentDto
 {
     public Guid Id { get; set; }

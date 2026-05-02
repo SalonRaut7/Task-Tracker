@@ -58,6 +58,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailSender, EmailSender>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+        services.AddScoped<IAuthorizationScopeResolver, AuthorizationScopeResolver>();
         services.AddScoped<INotificationPushService, NotificationPushService>();
 
         // ── Repositories ─────────────────────────────────────────

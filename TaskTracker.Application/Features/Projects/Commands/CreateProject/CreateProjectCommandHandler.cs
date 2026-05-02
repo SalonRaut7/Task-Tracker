@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
@@ -48,15 +49,6 @@ public sealed class CreateProjectCommandHandler : IRequestHandler<CreateProjectC
 
         await _projectRepository.AddAsync(project, cancellationToken);
 
-        return new ProjectDto
-        {
-            Id = project.Id,
-            OrganizationId = project.OrganizationId,
-            Name = project.Name,
-            Key = project.Key,
-            Description = project.Description,
-            CreatedAt = project.CreatedAt,
-            UpdatedAt = project.UpdatedAt
-        };
+        return ProjectDtoMapper.ToDto(project);
     }
 }

@@ -1,8 +1,8 @@
-using AutoMapper;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Entities.Identity;
 using TaskTracker.Domain.Interfaces;
 
@@ -11,18 +11,15 @@ namespace TaskTracker.Application.Features.Tasks.Queries.GetTaskById;
 public class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, TaskDto?>
 {
     private readonly ITaskRepository _taskRepository;
-    private readonly IMapper _mapper;
     private readonly IMembershipRepository _membershipRepository;
     private readonly UserManager<ApplicationUser> _userManager;
 
     public GetTaskByIdQueryHandler(
         ITaskRepository taskRepository,
-        IMapper mapper,
         IMembershipRepository membershipRepository,
         UserManager<ApplicationUser> userManager)
     {
         _taskRepository = taskRepository;
-        _mapper = mapper;
         _membershipRepository = membershipRepository;
         _userManager = userManager;
     }
@@ -36,7 +33,7 @@ public class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, TaskDto
             return null;
         }
 
-        var dto = _mapper.Map<TaskDto>(task);
+        var dto = TaskDtoMapper.ToDto(task);
 
         var memberships = await _membershipRepository
             .GetProjectMembershipsAsync(task.ProjectId, cancellationToken);

@@ -1,11 +1,11 @@
-using AutoMapper;
 using MediatR;
 using Microsoft.Extensions.Options;
 using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
-using TaskTracker.Application.Features.Tasks.Notifications;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Enums;
+using TaskTracker.Domain.Events;
 using TaskTracker.Domain.Interfaces;
 using TaskTracker.Application.Options;
 
@@ -14,29 +14,20 @@ namespace TaskTracker.Application.Features.Tasks.Commands.UpdateTask;
 public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskDto?>
 {
     private readonly ITaskRepository      _taskRepository;
-    private readonly IMapper              _mapper;
     private readonly TaskDateRulesOptions _taskDateRules;
     private readonly ICurrentUserService  _currentUser;
     private readonly IPermissionEvaluator _permissionEvaluator;
-    private readonly IPublisher           _publisher;
-    private readonly IUserRepository      _userRepository;
 
     public UpdateTaskCommandHandler(
         ITaskRepository taskRepository,
-        IMapper mapper,
         IOptions<TaskDateRulesOptions> taskDateRules,
         ICurrentUserService currentUser,
-        IPermissionEvaluator permissionEvaluator,
-        IPublisher publisher,
-        IUserRepository userRepository)
+        IPermissionEvaluator permissionEvaluator)
     {
         _taskRepository = taskRepository;
-        _mapper = mapper;
         _taskDateRules = taskDateRules.Value;
         _currentUser = currentUser;
         _permissionEvaluator = permissionEvaluator;
-        _publisher = publisher;
-        _userRepository = userRepository;
     }
 
     public async Task<TaskDto?> Handle(
@@ -137,9 +128,6 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
             _taskDateRules.EffectiveAllowedExtensionDays, // ← clean
             DateTime.UtcNow);
 
-        await _taskRepository.UpdateAsync(task, cancellationToken);
-
-        var dto = _mapper.Map<TaskDto>(task);
         var changedFields = BuildChangedFields(command, oldTitle, oldDescription, oldStatus, oldPriority, oldEpicId, oldSprintId, oldStartDate, oldEndDate);
 
         // Determine notification event type
@@ -147,28 +135,28 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
         if ((int)command.Status != oldStatus) eventType = "StatusChanged";
         if (assigneeId != oldAssigneeId) eventType = "Reassigned";
 
-        var currentUserId2 = _currentUser.UserId!;
-        var actorName = await _userRepository.GetFullNameAsync(currentUserId2, cancellationToken) ?? "Unknown";
-        await _publisher.Publish(new TaskChangedNotification
+        task.RaiseChangedEvent(new TaskChangedDomainEvent
         {
             EventType = eventType,
-            Task = dto,
+            Task = task.ToSnapshot(),
+            TaskEntity = task,
             TaskId = task.Id,
             TaskTitle = task.Title,
             ProjectId = command.ProjectId,
-            ActorUserId = currentUserId2,
-            ActorName = actorName,
+            ActorUserId = currentUserId,
             OldAssigneeId = oldAssigneeId,
             NewAssigneeId = assigneeId,
             OldStatus = oldStatus,
             NewStatus = (int)command.Status,
             ChangedFields = changedFields,
-        }, cancellationToken);
+        });
 
-        return dto;
+        await _taskRepository.UpdateAsync(task, cancellationToken);
+
+        return TaskDtoMapper.ToDto(task);
     }
 
-    private static IReadOnlyList<TaskFieldChange> BuildChangedFields(
+    private static IReadOnlyList<TaskChangedField> BuildChangedFields(
         UpdateTaskCommand command,
         string oldTitle,
         string? oldDescription,
@@ -179,11 +167,11 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
         DateOnly? oldStartDate,
         DateOnly? oldEndDate)
     {
-        var changedFields = new List<TaskFieldChange>();
+        var changedFields = new List<TaskChangedField>();
 
         if (!string.Equals(oldTitle, command.Title, StringComparison.Ordinal))
         {
-            changedFields.Add(new TaskFieldChange
+            changedFields.Add(new TaskChangedField
             {
                 FieldName = "Title",
                 OldValue = oldTitle,
@@ -193,7 +181,7 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
 
         if (!string.Equals(oldDescription, command.Description, StringComparison.Ordinal))
         {
-            changedFields.Add(new TaskFieldChange
+            changedFields.Add(new TaskChangedField
             {
                 FieldName = "Description",
                 OldValue = oldDescription,
@@ -203,7 +191,7 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
 
         if (oldStatus != (int)command.Status)
         {
-            changedFields.Add(new TaskFieldChange
+            changedFields.Add(new TaskChangedField
             {
                 FieldName = "Status",
                 OldValue = FormatStatusLabel(oldStatus),
@@ -213,7 +201,7 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
 
         if (oldPriority != command.Priority)
         {
-            changedFields.Add(new TaskFieldChange
+            changedFields.Add(new TaskChangedField
             {
                 FieldName = "Priority",
                 OldValue = oldPriority.ToString(),
@@ -223,7 +211,7 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
 
         if (oldEpicId != command.EpicId)
         {
-            changedFields.Add(new TaskFieldChange
+            changedFields.Add(new TaskChangedField
             {
                 FieldName = "Epic",
                 OldValue = oldEpicId?.ToString(),
@@ -233,7 +221,7 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
 
         if (oldSprintId != command.SprintId)
         {
-            changedFields.Add(new TaskFieldChange
+            changedFields.Add(new TaskChangedField
             {
                 FieldName = "Sprint",
                 OldValue = oldSprintId?.ToString(),
@@ -243,7 +231,7 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
 
         if (oldStartDate != command.StartDate)
         {
-            changedFields.Add(new TaskFieldChange
+            changedFields.Add(new TaskChangedField
             {
                 FieldName = "StartDate",
                 OldValue = oldStartDate?.ToString(),
@@ -253,7 +241,7 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
 
         if (oldEndDate != command.EndDate)
         {
-            changedFields.Add(new TaskFieldChange
+            changedFields.Add(new TaskChangedField
             {
                 FieldName = "EndDate",
                 OldValue = oldEndDate?.ToString(),

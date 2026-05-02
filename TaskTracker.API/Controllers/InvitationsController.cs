@@ -26,15 +26,9 @@ public class InvitationsController : ControllerBase
     /// <summary>Create a new invitation to a scope.</summary>
     [HttpPost]
     public async Task<ActionResult<InvitationDto>> Create(
-        [FromBody] CreateInvitationDto dto, CancellationToken cancellationToken)
+        [FromBody] CreateInvitationCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new CreateInvitationCommand
-        {
-            ScopeType = dto.ScopeType,
-            ScopeId = dto.ScopeId,
-            InviteeEmail = dto.InviteeEmail,
-            Role = dto.Role
-        }, cancellationToken);
+        var result = await _mediator.Send(command, cancellationToken);
 
         return CreatedAtAction(null, result);
     }
@@ -60,9 +54,9 @@ public class InvitationsController : ControllerBase
     /// <summary>Accept an invitation using the raw token.</summary>
     [HttpPost("accept")]
     public async Task<ActionResult<AcceptInvitationResult>> Accept(
-        [FromBody] AcceptInvitationDto dto, CancellationToken cancellationToken)
+        [FromBody] AcceptInvitationCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new AcceptInvitationCommand { Token = dto.Token }, cancellationToken);
+        var result = await _mediator.Send(command, cancellationToken);
 
         if (!result.Success)
         {

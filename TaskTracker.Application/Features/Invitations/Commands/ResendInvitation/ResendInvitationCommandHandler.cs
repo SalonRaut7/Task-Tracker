@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using TaskTracker.Application.Authorization;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Features.Invitations;
 using TaskTracker.Application.Options;
 using TaskTracker.Application.Interfaces;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities.Identity;
 using TaskTracker.Domain.Enums;
@@ -52,35 +54,18 @@ public sealed class ResendInvitationCommandHandler : IRequestHandler<ResendInvit
 
     public async Task<InvitationDto> Handle(ResendInvitationCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-            throw new UnauthorizedAccessException("Authentication is required.");
-
         var invitation = await _invitationRepository.GetByIdAsync(request.InvitationId, cancellationToken)
             ?? throw new InvalidOperationException("Invitation not found.");
 
-        var userId = _currentUser.UserId!;
+        var userId = _currentUser.RequireUserId();
 
-        var canResend = await _permissionEvaluator.HasPermissionAsync(
-            userId,
-            AppPermissions.InvitationsCreate,
+        await InvitationAuthorizationGuard.EnsureOrganizationInvitationManagementAsync(
             invitation.ScopeType,
             invitation.ScopeId,
+            userId,
+            _currentUser.IsSuperAdmin,
+            _permissionEvaluator,
             cancellationToken);
-
-        if (!canResend)
-            throw new ForbiddenAccessException("You do not have permission to resend invitations in this scope.");
-
-        if (invitation.ScopeType == ScopeType.Organization)
-        {
-            var orgRole = await _permissionEvaluator.GetUserRoleInScopeAsync(
-                userId,
-                ScopeType.Organization,
-                invitation.ScopeId,
-                cancellationToken);
-
-            if (!_currentUser.IsSuperAdmin && !string.Equals(orgRole, AppRoles.OrgAdmin, StringComparison.Ordinal))
-                throw new ForbiddenAccessException("Only OrgAdmin can manage organization invitations.");
-        }
 
         var rawToken = GenerateSecureToken();
         var tokenHash = _tokenService.HashToken(rawToken);
@@ -93,7 +78,7 @@ public sealed class ResendInvitationCommandHandler : IRequestHandler<ResendInvit
             ? (await _organizationRepository.GetByIdAsync(invitation.ScopeId, cancellationToken))?.Name ?? "Organization"
             : (await _projectRepository.GetByIdAsync(invitation.ScopeId, cancellationToken))?.Name ?? "Project";
 
-        var inviterUser = await _userManager.FindByIdAsync(_currentUser.UserId!);
+        var inviterUser = await _userManager.FindByIdAsync(userId);
         var inviterName = inviterUser is not null
             ? $"{inviterUser.FirstName} {inviterUser.LastName}".Trim()
             : "A team member";
@@ -105,19 +90,7 @@ public sealed class ResendInvitationCommandHandler : IRequestHandler<ResendInvit
 
         await _pushService.BroadcastScopeMembersChangedAsync(invitation.ScopeType, invitation.ScopeId, cancellationToken);
 
-        return new InvitationDto
-        {
-            Id = invitation.Id,
-            ScopeType = invitation.ScopeType,
-            ScopeId = invitation.ScopeId,
-            InviteeEmail = invitation.InviteeEmail,
-            Role = invitation.Role,
-            Status = invitation.Status,
-            InvitedByUserId = invitation.InvitedByUserId,
-            InvitedByName = inviterName,
-            CreatedAt = invitation.CreatedAt,
-            ExpiresAt = invitation.ExpiresAt
-        };
+        return InvitationDtoMapper.ToDto(invitation, inviterName);
     }
 
     private static string GenerateSecureToken()

@@ -4,7 +4,9 @@ public enum ResourceType
 {
     Organization,
     Project,
+    Task,
     Epic,
     Sprint,
-    Comment
+    Comment,
+    Invitation
 }

@@ -1,8 +1,9 @@
-using AutoMapper;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
 
@@ -11,18 +12,18 @@ namespace TaskTracker.Application.Features.Tasks.Queries.GetAllTasks;
 public class GetAllTasksQueryHandler : IRequestHandler<GetAllTasksQuery, PagedResultDto<TaskDto>>
 {
     private readonly ITaskRepository _taskRepository;
-    private readonly IMapper _mapper;
+    private readonly IProjectRepository _projectRepository;
     private readonly ICurrentUserService _currentUser;
     private readonly IMembershipRepository _membershipRepository;
 
     public GetAllTasksQueryHandler(
         ITaskRepository taskRepository,
-        IMapper mapper,
+        IProjectRepository projectRepository,
         ICurrentUserService currentUser,
         IMembershipRepository membershipRepository)
     {
         _taskRepository = taskRepository;
-        _mapper = mapper;
+        _projectRepository = projectRepository;
         _currentUser = currentUser;
         _membershipRepository = membershipRepository;
     }
@@ -33,24 +34,21 @@ public class GetAllTasksQueryHandler : IRequestHandler<GetAllTasksQuery, PagedRe
 
         if (!IsSuperAdmin())
         {
-            if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
-            {
-                throw new UnauthorizedAccessException("Authentication is required.");
-            }
-
             var userId = _currentUser.UserId!;
 
             if (request.ProjectId.HasValue)
             {
-                var orgIds = await _membershipRepository.GetUserOrganizationIdsAsync(userId, cancellationToken);
-                var projectOrgId = await _taskRepository.Query()
-                    .Where(t => t.ProjectId == request.ProjectId.Value)
-                    .Select(t => t.Project.OrganizationId)
-                    .FirstOrDefaultAsync(cancellationToken);
-
-                if (projectOrgId == Guid.Empty || !orgIds.Contains(projectOrgId))
+                var project = await _projectRepository.GetByIdAsync(request.ProjectId.Value, cancellationToken);
+                if (project is null)
                 {
-                    throw new Application.Authorization.ForbiddenAccessException(
+                    throw new ForbiddenAccessException(
+                        $"No access to Project resource '{request.ProjectId.Value}'.");
+                }
+
+                var orgIds = await _membershipRepository.GetUserOrganizationIdsAsync(userId, cancellationToken);
+                if (!orgIds.Contains(project.OrganizationId))
+                {
+                    throw new ForbiddenAccessException(
                         $"No access to Project resource '{request.ProjectId.Value}'.");
                 }
             }
@@ -80,17 +78,18 @@ public class GetAllTasksQueryHandler : IRequestHandler<GetAllTasksQuery, PagedRe
         var skip = request.Skip.GetValueOrDefault();
         var hasTake = request.Take.HasValue && request.Take.Value > 0;
         var take = hasTake ? request.Take!.Value : 0;
+        var projectedQuery = orderedQuery.Select(TaskDtoMapper.Projection());
 
-        List<TaskItem> tasks;
+        List<TaskDto> tasks;
         int totalCount;
 
         if (hasTake)
         {
             if (skip == 0)
             {
-                var firstPageProbe = await _taskRepository.ToListAsync(
-                    orderedQuery.Take(take + 1),
-                    cancellationToken);
+                var firstPageProbe = await projectedQuery
+                    .Take(take + 1)
+                    .ToListAsync(cancellationToken);
 
                 if (firstPageProbe.Count <= take)
                 {
@@ -105,21 +104,22 @@ public class GetAllTasksQueryHandler : IRequestHandler<GetAllTasksQuery, PagedRe
             }
             else
             {
-                tasks = await _taskRepository.ToListAsync(
-                    orderedQuery.Skip(skip).Take(take),
-                    cancellationToken);
+                tasks = await projectedQuery
+                    .Skip(skip)
+                    .Take(take)
+                    .ToListAsync(cancellationToken);
                 totalCount = await _taskRepository.CountAsync(filteredQuery, cancellationToken);
             }
         }
         else
         {
-            tasks = await _taskRepository.ToListAsync(orderedQuery, cancellationToken);
+            tasks = await projectedQuery.ToListAsync(cancellationToken);
             totalCount = tasks.Count;
         }
 
         return new PagedResultDto<TaskDto>
         {
-            Data = _mapper.Map<List<TaskDto>>(tasks),
+            Data = tasks,
             TotalCount = totalCount
         };
     }
@@ -203,4 +203,5 @@ public class GetAllTasksQueryHandler : IRequestHandler<GetAllTasksQuery, PagedRe
 
         return $"%{escapedValue}%";
     }
+
 }

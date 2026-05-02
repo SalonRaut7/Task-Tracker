@@ -11,5 +11,5 @@ public sealed class CreateCommentCommand : IRequest<CommentDto>, IAuthorizedRequ
     public string Content { get; set; } = string.Empty;
 
     public string RequiredPermission => AppPermissions.CommentsAdd;
-    public IReadOnlyList<ResourceScope> Scopes => [];
+    public IReadOnlyList<ResourceScope> Scopes => [new ResourceScope(ResourceType.Task, TaskId)];
 }

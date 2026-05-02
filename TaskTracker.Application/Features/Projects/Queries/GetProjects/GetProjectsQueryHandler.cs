@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Projects.Queries.GetProjects;
@@ -41,12 +42,7 @@ public sealed class GetProjectsQueryHandler : IRequestHandler<GetProjectsQuery, 
 
         if (!_currentUser.IsSuperAdmin)
         {
-            var userId = _currentUser.UserId;
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                throw new UnauthorizedAccessException("Authentication is required.");
-            }
-
+            var userId = _currentUser.UserId!;
             var organizationIds = await _membershipRepository.GetUserOrganizationIdsAsync(userId, cancellationToken);
             if (organizationIds.Count == 0)
             {
@@ -74,16 +70,7 @@ public sealed class GetProjectsQueryHandler : IRequestHandler<GetProjectsQuery, 
         }
 
         var data = await query
-            .Select(project => new ProjectDto
-            {
-                Id = project.Id,
-                OrganizationId = project.OrganizationId,
-                Name = project.Name,
-                Key = project.Key,
-                Description = project.Description,
-                CreatedAt = project.CreatedAt,
-                UpdatedAt = project.UpdatedAt
-            })
+            .Select(ProjectDtoMapper.Projection())
             .ToListAsync(cancellationToken);
 
         return new PagedResultDto<ProjectDto>

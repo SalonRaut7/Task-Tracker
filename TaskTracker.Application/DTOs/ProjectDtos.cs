@@ -7,13 +7,6 @@ public abstract class ProjectBaseDto
     public string? Description { get; set; }
 }
 
-public sealed class CreateProjectDto : ProjectBaseDto
-{
-    public Guid OrganizationId { get; set; }
-}
-
-public sealed class UpdateProjectDto : ProjectBaseDto;
-
 public sealed class ProjectDto : ProjectBaseDto
 {
     public Guid Id { get; set; }

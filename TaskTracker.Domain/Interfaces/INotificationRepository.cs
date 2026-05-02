@@ -4,9 +4,6 @@ namespace TaskTracker.Domain.Interfaces;
 // Abstracts notification persistence so Application handlers never resolve DbContext directly.
 public interface INotificationRepository
 {
-    /// Persists a single notification.
-    Task AddAsync(Notification notification, CancellationToken ct = default);
-
     /// Persists multiple notifications in a single batch.
     Task AddRangeAsync(IEnumerable<Notification> notifications, CancellationToken ct = default);
 
@@ -18,6 +15,9 @@ public interface INotificationRepository
 
     /// Marks all notifications for a user as read.
     Task MarkAllAsReadAsync(string userId, CancellationToken ct = default);
+
+    /// Returns true when a matching notification already exists since the provided UTC time.
+    Task<bool> ExistsForTaskTypeSinceAsync(string type, int taskId, DateTime sinceUtc, CancellationToken ct = default);
 
     /// Deletes old notifications, keeping only the latest N per user.
     Task PruneAsync(string userId, CancellationToken ct = default);

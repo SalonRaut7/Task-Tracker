@@ -10,5 +10,8 @@ public sealed class GetCommentsQuery : IRequest<IReadOnlyList<CommentDto>>, IAut
     public int? TaskId { get; set; }
 
     public string RequiredPermission => AppPermissions.CommentsView;
-    public IReadOnlyList<ResourceScope> Scopes => [];
+    public IReadOnlyList<ResourceScope> Scopes =>
+        TaskId.HasValue
+            ? [new ResourceScope(ResourceType.Task, TaskId.Value)]
+            : [];
 }

@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Organizations.Queries.GetOrganizationById;
@@ -21,14 +22,6 @@ public sealed class GetOrganizationByIdQueryHandler : IRequestHandler<GetOrganiz
             return null;
         }
 
-        return new OrganizationDto
-        {
-            Id = organization.Id,
-            Name = organization.Name,
-            Slug = organization.Slug,
-            Description = organization.Description,
-            CreatedAt = organization.CreatedAt,
-            UpdatedAt = organization.UpdatedAt
-        };
+        return OrganizationDtoMapper.ToDto(organization);
     }
 }

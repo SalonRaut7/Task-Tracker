@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Sprints.Queries.GetSprints;
@@ -32,12 +33,7 @@ public sealed class GetSprintsQueryHandler : IRequestHandler<GetSprintsQuery, IR
 
         if (!_currentUser.IsSuperAdmin)
         {
-            var userId = _currentUser.UserId;
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                throw new UnauthorizedAccessException("Authentication is required.");
-            }
-
+            var userId = _currentUser.UserId!;
             var organizationIds = await _membershipRepository.GetUserOrganizationIdsAsync(userId, cancellationToken);
             if (organizationIds.Count == 0)
             {
@@ -49,18 +45,7 @@ public sealed class GetSprintsQueryHandler : IRequestHandler<GetSprintsQuery, IR
 
         return await query
             .OrderByDescending(sprint => sprint.CreatedAt)
-            .Select(sprint => new SprintDto
-            {
-                Id = sprint.Id,
-                ProjectId = sprint.ProjectId,
-                Name = sprint.Name,
-                Goal = sprint.Goal,
-                StartDate = sprint.StartDate,
-                EndDate = sprint.EndDate,
-                Status = sprint.Status,
-                CreatedAt = sprint.CreatedAt,
-                UpdatedAt = sprint.UpdatedAt
-            })
+            .Select(SprintDtoMapper.Projection())
             .ToListAsync(cancellationToken);
     }
 }

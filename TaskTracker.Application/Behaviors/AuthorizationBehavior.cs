@@ -1,34 +1,30 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
-using TaskTracker.Domain.Constants;
-using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Behaviors;
 
 /// <summary>
-/// MediatR pipeline behavior that enforces authorization on commands/queries
-/// implementing IAuthorizedRequest. Uses IPermissionEvaluator for dynamic,
-/// database-backed permission checks (not JWT claims).
+/// MediatR pipeline behavior that enforces:
+/// - authentication for IAuthenticatedRequest
+/// - permission + scope checks for IAuthorizedRequest
+/// Uses IPermissionEvaluator for dynamic, database-backed permission checks.
 /// </summary>
 public class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IRequest<TResponse>
 {
     private readonly ICurrentUserService _currentUser;
     private readonly IPermissionEvaluator _permissionEvaluator;
-    private readonly ICommentRepository? _commentRepository;
-    private readonly ITaskRepository? _taskRepository;
+    private readonly IAuthorizationScopeResolver _scopeResolver;
 
     public AuthorizationBehavior(
         ICurrentUserService currentUser,
         IPermissionEvaluator permissionEvaluator,
-        ICommentRepository? commentRepository = null,
-        ITaskRepository? taskRepository = null)
+        IAuthorizationScopeResolver scopeResolver)
     {
         _currentUser = currentUser;
         _permissionEvaluator = permissionEvaluator;
-        _commentRepository = commentRepository;
-        _taskRepository = taskRepository;
+        _scopeResolver = scopeResolver;
     }
 
     public async Task<TResponse> Handle(
@@ -36,14 +32,19 @@ public class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavior<TReq
         RequestHandlerDelegate<TResponse> next,
         CancellationToken cancellationToken)
     {
-        if (request is not IAuthorizedRequest authorizedRequest)
+        var authorizedRequest = request as IAuthorizedRequest;
+        var requiresAuthentication = request is IAuthenticatedRequest || authorizedRequest is not null;
+
+        if (!requiresAuthentication)
         {
             return await next();
         }
 
-        if (!_currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(_currentUser.UserId))
+        var userId = _currentUser.RequireUserId();
+
+        if (authorizedRequest is null)
         {
-            throw new UnauthorizedAccessException("Authentication is required.");
+            return await next();
         }
 
         // SuperAdmin bypasses all permission and scope checks
@@ -52,7 +53,6 @@ public class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavior<TReq
             return await next();
         }
 
-        var userId = _currentUser.UserId!;
         var scopes = authorizedRequest.Scopes ?? [];
         var permission = authorizedRequest.RequiredPermission;
 
@@ -81,7 +81,7 @@ public class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavior<TReq
             // Check permission in each specified scope
             foreach (var scope in scopes)
             {
-                var (scopeType, scopeId) = await ResolveAuthorizationScopeAsync(scope, cancellationToken);
+                var (scopeType, scopeId) = await _scopeResolver.ResolveScopeAsync(scope, cancellationToken);
 
                 if (scopeId == Guid.Empty)
                 {
@@ -103,45 +103,5 @@ public class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavior<TReq
         }
 
         return await next();
-    }
-
-    private async Task<(ScopeType scopeType, Guid scopeId)> ResolveAuthorizationScopeAsync(
-        ResourceScope scope,
-        CancellationToken cancellationToken)
-    {
-        if (scope.ResourceType == ResourceType.Organization)
-        {
-            return (ScopeType.Organization, scope.Id);
-        }
-
-        if (scope.ResourceType == ResourceType.Project)
-        {
-            return (ScopeType.Project, scope.Id);
-        }
-
-        if (scope.ResourceType == ResourceType.Comment)
-        {
-            if (_commentRepository is null || _taskRepository is null)
-            {
-                return (ScopeType.Project, Guid.Empty);
-            }
-
-            var comment = await _commentRepository.GetByIdAsync(scope.Id, cancellationToken);
-            if (comment is null)
-            {
-                return (ScopeType.Project, Guid.Empty);
-            }
-
-            var task = await _taskRepository.GetByIdAsync(comment.TaskId, cancellationToken);
-            if (task is null)
-            {
-                return (ScopeType.Project, Guid.Empty);
-            }
-
-            return (ScopeType.Project, task.ProjectId);
-        }
-
-        // Other child resources currently use project-scoped authorization.
-        return (ScopeType.Project, scope.Id);
     }
 }

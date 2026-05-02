@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Organizations.Queries.GetOrganizations;
@@ -36,12 +37,7 @@ public sealed class GetOrganizationsQueryHandler : IRequestHandler<GetOrganizati
 
         if (!_currentUser.IsSuperAdmin)
         {
-            var userId = _currentUser.UserId;
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                throw new UnauthorizedAccessException("Authentication is required.");
-            }
-
+            var userId = _currentUser.UserId!;
             var organizationIds = await _membershipRepository.GetUserOrganizationIdsAsync(userId, cancellationToken);
             if (organizationIds.Count == 0)
             {
@@ -69,15 +65,7 @@ public sealed class GetOrganizationsQueryHandler : IRequestHandler<GetOrganizati
         }
 
         var data = await query
-            .Select(org => new OrganizationDto
-            {
-                Id = org.Id,
-                Name = org.Name,
-                Slug = org.Slug,
-                Description = org.Description,
-                CreatedAt = org.CreatedAt,
-                UpdatedAt = org.UpdatedAt
-            })
+            .Select(OrganizationDtoMapper.Projection())
             .ToListAsync(cancellationToken);
 
         return new PagedResultDto<OrganizationDto>

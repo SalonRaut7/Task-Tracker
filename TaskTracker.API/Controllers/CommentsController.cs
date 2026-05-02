@@ -42,25 +42,18 @@ public class CommentsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<CommentDto>> Create([FromBody] CreateCommentDto dto, CancellationToken cancellationToken)
+    public async Task<ActionResult<CommentDto>> Create([FromBody] CreateCommentCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new CreateCommentCommand
-        {
-            TaskId = dto.TaskId,
-            Content = dto.Content
-        }, cancellationToken);
+        var result = await _mediator.Send(command, cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<CommentDto>> Update([FromRoute] Guid id, [FromBody] UpdateCommentDto dto, CancellationToken cancellationToken)
+    public async Task<ActionResult<CommentDto>> Update([FromRoute] Guid id, [FromBody] UpdateCommentCommand command, CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new UpdateCommentCommand
-        {
-            Id = id,
-            Content = dto.Content
-        }, cancellationToken);
+        command.Id = id;
+        var result = await _mediator.Send(command, cancellationToken);
 
         if (result is null)
         {

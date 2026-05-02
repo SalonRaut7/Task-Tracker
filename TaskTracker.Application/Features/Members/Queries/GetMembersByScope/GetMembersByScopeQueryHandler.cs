@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TaskTracker.Application.DTOs;
+using TaskTracker.Application.Mapping;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities.Identity;
 using TaskTracker.Domain.Enums;
@@ -98,26 +99,25 @@ public sealed class GetMembersByScopeQueryHandler : IRequestHandler<GetMembersBy
                 .ToList();
         }
 
+        // Override the displayed role for any member who is a global SuperAdmin.
+        // This ensures the member list shows "SuperAdmin" instead of whatever
+        // scoped role (e.g. OrgAdmin) was stored in the membership record.
+        var superAdminUsers = await _userManager.GetUsersInRoleAsync(AppRoles.SuperAdmin);
+        var superAdminIdSet = superAdminUsers.Select(u => u.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var member in members)
+        {
+            if (superAdminIdSet.Contains(member.UserId))
+            {
+                member.Role = AppRoles.SuperAdmin;
+            }
+        }
+
         var allInvitations = await _invitationRepository.GetByScopeAsync(
             request.ScopeType, request.ScopeId, cancellationToken);
 
         var pendingInvitations = allInvitations
             .Where(i => i.Status == InvitationStatus.Pending && !i.IsExpired)
-            .Select(i => new InvitationDto
-            {
-                Id = i.Id,
-                ScopeType = i.ScopeType,
-                ScopeId = i.ScopeId,
-                InviteeEmail = i.InviteeEmail,
-                Role = i.Role,
-                Status = i.Status,
-                InvitedByUserId = i.InvitedByUserId,
-                InvitedByName = i.InvitedByUser is not null
-                    ? $"{i.InvitedByUser.FirstName} {i.InvitedByUser.LastName}".Trim()
-                    : "",
-                CreatedAt = i.CreatedAt,
-                ExpiresAt = i.ExpiresAt
-            })
+            .Select(invitation => InvitationDtoMapper.ToDto(invitation))
             .ToList();
 
         var pendingInvitationEmails = pendingInvitations
