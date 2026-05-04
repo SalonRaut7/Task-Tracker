@@ -27,6 +27,14 @@ export function LoginPage() {
   const [transitionLoading, setTransitionLoading] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [archiveMessage, setArchiveMessage] = useState<string>(() => {
+    return sessionStorage.getItem("archiveMessage") || "";
+  });
+
+  const dismissArchiveMessage = () => {
+    setArchiveMessage("");
+    sessionStorage.removeItem("archiveMessage");
+  };
 
   const returnUrlFromQuery = sanitizeReturnUrl(
     new URLSearchParams(location.search).get("returnUrl")
@@ -87,6 +95,8 @@ export function LoginPage() {
 
     try {
       await login(email.trim(), password);
+      // Clear archive message on successful login just in case
+      sessionStorage.removeItem("archiveMessage");
       navigate(postLoginPath, { replace: true });
     } catch (requestError) {
       setError(getErrorMessage(requestError, "Unable to sign in right now. Please try again."));
@@ -108,6 +118,25 @@ export function LoginPage() {
 
       <div className="auth-form-panel">
         <form className="auth-card" onSubmit={handleSubmit}>
+          {archiveMessage && (
+            <div className="archive-banner">
+              <div className="archive-banner-content">
+                <strong>Account Archived</strong>
+                <span>{archiveMessage}</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={dismissArchiveMessage}
+                className="archive-banner-close"
+                aria-label="Dismiss message"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           <h2>Welcome back</h2>
           <p>Sign in to continue</p>
 

@@ -99,4 +99,11 @@ public class NotificationPushService : INotificationPushService
             .Group($"user-{userId}")
             .SendAsync("UserWorkspaceChanged", new { userId }, ct);
     }
+
+    public async Task SendUserArchivedAsync(string userId, string? reason, CancellationToken ct = default)
+    {
+        await _hubContext.Clients
+            .Group($"user-{userId}")
+            .SendAsync("UserArchived", new { reason }, ct);
+    }
 }

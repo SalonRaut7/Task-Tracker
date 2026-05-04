@@ -48,6 +48,10 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponseDto
         if (!user.EmailConfirmed)
             throw new InvalidOperationException("Please verify your email before logging in.");
 
+        // Check if user is archived
+        if (user.IsArchived)
+            throw new InvalidOperationException("Your account has been archived. Contact admin for reactivation.");
+
         // Check if user is active
         if (!user.IsActive)
             throw new InvalidOperationException("Your account has been deactivated. Contact support.");
