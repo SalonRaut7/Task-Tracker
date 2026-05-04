@@ -433,6 +433,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         void refreshWorkspaceData({ includeTasks: false });
       });
 
+      conn.on("UserArchived", (payload: { reason?: string }) => {
+        console.log("[SignalR] Received UserArchived event", payload);
+        const message = payload?.reason
+          ? `You have been archived due to: ${payload.reason}. Contact admin for reactivation.`
+          : "You have been archived. Contact admin for reactivation.";
+        
+        sessionStorage.setItem("archiveMessage", message);
+        void clearSession(false);
+      });
+
       conn.on("UserWorkspaceChanged", () => {
         void refreshPermissions();
         void refreshWorkspaceData({ includeTasks: false });

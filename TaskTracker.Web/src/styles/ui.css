@@ -604,6 +604,58 @@
   color: var(--text-muted);
 }
 
+.archive-banner {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface) 90%);
+  color: var(--danger);
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.08);
+  animation: slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.archive-banner-content {
+  flex: 1;
+  padding-right: 1.25rem;
+}
+
+.archive-banner-content strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+  color: var(--danger);
+}
+
+.archive-banner-content span {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.archive-banner-close {
+  background: transparent;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  opacity: 0.7;
+  padding: 0.25rem;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.archive-banner-close:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+}
+
 .form-error {
   border: 1px solid rgba(239, 68, 68, 0.3);
   color: var(--danger);

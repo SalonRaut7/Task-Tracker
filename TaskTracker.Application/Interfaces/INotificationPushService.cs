@@ -38,4 +38,7 @@ public interface INotificationPushService
 
     // Push a direct workspace refresh event to a specific user group.
     Task BroadcastUserWorkspaceChangedAsync(string userId, CancellationToken ct = default);
+
+    // Push a force-logout event to all sessions of an archived user.
+    Task SendUserArchivedAsync(string userId, string? reason, CancellationToken ct = default);
 }

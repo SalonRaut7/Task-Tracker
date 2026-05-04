@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Entities.Identity;
 using TaskTracker.Domain.Interfaces;
@@ -12,15 +13,18 @@ public sealed class ArchiveUserCommandHandler : IRequestHandler<ArchiveUserComma
     private readonly IUserRepository _userRepository;
     private readonly ICurrentUserService _currentUser;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly INotificationPushService _notificationPush;
 
     public ArchiveUserCommandHandler(
         IUserRepository userRepository,
         ICurrentUserService currentUser,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        INotificationPushService notificationPush)
     {
         _userRepository = userRepository;
         _currentUser = currentUser;
         _userManager = userManager;
+        _notificationPush = notificationPush;
     }
 
     public async Task<bool> Handle(ArchiveUserCommand request, CancellationToken cancellationToken)
@@ -50,6 +54,10 @@ public sealed class ArchiveUserCommandHandler : IRequestHandler<ArchiveUserComma
         }
 
         await _userRepository.ArchiveAsync(user, currentUserId, request.Reason, cancellationToken);
+
+        // Push force-logout to all active sessions of the archived user
+        await _notificationPush.SendUserArchivedAsync(request.UserId, request.Reason, cancellationToken);
+
         return true;
     }
 
