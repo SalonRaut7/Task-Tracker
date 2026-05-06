@@ -54,12 +54,20 @@ export interface InvitableUser {
   fullName: string;
 }
 
+export interface MentionableUser {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+}
+
 export interface ScopeMembersResponse {
   scopeType: ScopeTypeNumeric;
   scopeId: string;
   members: ScopeMember[];
   pendingInvitations: Invitation[];
   invitableUsers: InvitableUser[];
+  mentionableUsers?: MentionableUser[];
 }
 
 export interface UpdateMemberRolePayload {

@@ -4,6 +4,7 @@ import type { BackendComment } from "../types/app";
 export interface CreateCommentPayload {
   taskId: number;
   content: string;
+  mentionedUserIds?: string[];
 }
 
 export interface UpdateCommentPayload {

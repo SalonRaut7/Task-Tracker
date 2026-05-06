@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import ReactDOM from "react-dom";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { Button } from "devextreme-react/button";
 import SelectBox from "devextreme-react/select-box";
-import TextArea from "devextreme-react/text-area";
+import TextArea, { type TextAreaRef } from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
 import { useApp } from "../context/AppContext";
 import {
@@ -18,7 +19,7 @@ import { getTaskById } from "../services/taskService";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import { AppPermissions, AppRoles } from "../security/permissions";
 import type { BackendComment, BackendEpic, BackendSprint } from "../types/app";
-import type { ScopeMember } from "../types/invitation";
+import type { MentionableUser, ScopeMember } from "../types/invitation";
 import type { TaskDto, TaskUserIdentity, UpdateTaskDto } from "../types/task";
 import { priorityLabel, statusLabel } from "../utils/taskPresentation";
 import { buildConnection } from "../services/signalRService";
@@ -62,11 +63,17 @@ export function TaskDetailsPage() {
   const [epics, setEpics] = useState<BackendEpic[]>([]);
   const [sprints, setSprints] = useState<BackendSprint[]>([]);
   const [projectMembers, setProjectMembers] = useState<ScopeMember[]>([]);
+  const [scopeMentionableUsers, setScopeMentionableUsers] = useState<MentionableUser[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const commentTextAreaRef = useRef<TextAreaRef>(null);
+  const mentionStartRef = useRef<number | null>(null);
+  const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
 
   const [comments, setComments] = useState<BackendComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState("");
   const [commentDraft, setCommentDraft] = useState("");
+  const [commentMentions, setCommentMentions] = useState<{ id: string; label: string }[]>([]);
   const [commentActionLoading, setCommentActionLoading] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
@@ -143,6 +150,7 @@ export function TaskDetailsPage() {
       setEpics([]);
       setSprints([]);
       setProjectMembers([]);
+      setScopeMentionableUsers([]);
       return;
     }
 
@@ -156,10 +164,12 @@ export function TaskDetailsPage() {
       setEpics(epicsResult);
       setSprints(sprintsResult);
       setProjectMembers(membersResult.members);
+      setScopeMentionableUsers(membersResult.mentionableUsers ?? []);
     } catch {
       setEpics([]);
       setSprints([]);
       setProjectMembers([]);
+      setScopeMentionableUsers([]);
     }
   }, [resolvedProjectId]);
 
@@ -268,6 +278,269 @@ export function TaskDetailsPage() {
 
     return options;
   }, [projectMembers, task?.assigneeId, task?.assigneeUser]);
+
+  type MentionOption = { id: string; label: string; role: string };
+
+  const mentionableUsers = useMemo(() => {
+    const list: MentionOption[] = [];
+    const addedIds = new Set<string>();
+    const sourceUsers =
+      scopeMentionableUsers.length > 0
+        ? scopeMentionableUsers
+        : projectMembers.map((member) => ({
+            userId: member.userId,
+            firstName: member.firstName,
+            lastName: member.lastName,
+            role: member.role,
+          }));
+
+    sourceUsers.forEach((mentionableUser) => {
+      const fullName = `${mentionableUser.firstName} ${mentionableUser.lastName}`.trim();
+      if (
+        !mentionableUser.userId ||
+        mentionableUser.userId === user?.id ||
+        !fullName ||
+        addedIds.has(mentionableUser.userId)
+      ) {
+        return;
+      }
+
+      list.push({
+        id: mentionableUser.userId,
+        label:
+          mentionableUser.role === AppRoles.SuperAdmin
+            ? `${fullName} (Super Admin)`
+            : fullName,
+        role: mentionableUser.role,
+      });
+      addedIds.add(mentionableUser.userId);
+    });
+
+    return list;
+  }, [projectMembers, scopeMentionableUsers, user?.id]);
+
+  const filteredMentionableUsers = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase();
+    return q === ""
+      ? mentionableUsers
+      : mentionableUsers.filter((u) => u.label.toLowerCase().includes(q));
+  }, [mentionQuery, mentionableUsers]);
+
+  const closeMentionDropdown = () => {
+    setMentionQuery(null);
+    setDropdownRect(null);
+    mentionStartRef.current = null;
+  };
+
+  const cleanMentionLabel = (label: string) => label.replace(/\s+\(Super Admin\)$/, "").trim();
+
+  const getMentionMeta = (mention: MentionOption) => {
+    if (mention.role === AppRoles.SuperAdmin) {
+      return "Global Super Admin";
+    }
+
+    return mention.role || "Project member";
+  };
+
+  const getMentionInitials = (label: string) => {
+    const cleanLabel = cleanMentionLabel(label);
+    const [first = "", second = ""] = cleanLabel.split(/\s+/);
+    return `${first.charAt(0)}${second.charAt(0)}`.toUpperCase() || "@";
+  };
+
+  const getCommentTextarea = useCallback(() => {
+    const root = commentTextAreaRef.current?.instance().element() as HTMLElement | undefined;
+    return root?.querySelector("textarea") ?? null;
+  }, []);
+
+  const findMentionTrigger = (value: string, caretIndex: number) => {
+    const beforeCaret = value.slice(0, caretIndex);
+    const atIndex = beforeCaret.lastIndexOf("@");
+
+    if (atIndex === -1) {
+      return null;
+    }
+
+    const charBeforeAt = atIndex > 0 ? beforeCaret[atIndex - 1] : "";
+    if (charBeforeAt && !/\s/.test(charBeforeAt)) {
+      return null;
+    }
+
+    const query = beforeCaret.slice(atIndex + 1);
+    if (/[\s@]/.test(query)) {
+      return null;
+    }
+
+    return { startIndex: atIndex, query };
+  };
+
+  const updateMentionDropdown = (value: string) => {
+    const textarea = getCommentTextarea();
+    const caretIndex = textarea?.selectionStart ?? value.length;
+    const trigger = findMentionTrigger(value, caretIndex);
+
+    if (!trigger) {
+      closeMentionDropdown();
+      return;
+    }
+
+    mentionStartRef.current = trigger.startIndex;
+    setMentionQuery(trigger.query);
+
+    const root = commentTextAreaRef.current?.instance().element() as HTMLElement | undefined;
+    setDropdownRect((textarea ?? root)?.getBoundingClientRect() ?? null);
+  };
+
+  const handleCommentDraftChange = (value: string) => {
+    setCommentDraft(value);
+    setCommentMentions((prev) =>
+      prev.filter((mention) => value.includes(`@${cleanMentionLabel(mention.label)}`))
+    );
+    updateMentionDropdown(value);
+  };
+
+  const handleCommentCaretChange = () => {
+    updateMentionDropdown(commentDraft);
+  };
+
+  const insertMention = (targetUser: MentionOption) => {
+    const textarea = getCommentTextarea();
+    const caretIndex = textarea?.selectionStart ?? commentDraft.length;
+    const trigger = findMentionTrigger(commentDraft, caretIndex);
+    const startIndex = mentionStartRef.current ?? trigger?.startIndex ?? commentDraft.lastIndexOf("@");
+
+    if (startIndex < 0) {
+      closeMentionDropdown();
+      return;
+    }
+
+    const cleanLabel = cleanMentionLabel(targetUser.label);
+    const after = commentDraft.slice(caretIndex);
+    const insertedText = `@${cleanLabel}${after.startsWith(" ") || after.startsWith("\n") ? "" : " "}`;
+    const nextDraft = `${commentDraft.slice(0, startIndex)}${insertedText}${after}`;
+    const nextCaretPosition = startIndex + insertedText.length;
+
+    setCommentDraft(nextDraft);
+    setCommentMentions((prev) => {
+      if (prev.some((mention) => mention.id === targetUser.id)) {
+        return prev;
+      }
+
+      return [...prev, { id: targetUser.id, label: cleanLabel }];
+    });
+    closeMentionDropdown();
+
+    window.setTimeout(() => {
+      const nextTextarea = getCommentTextarea();
+      commentTextAreaRef.current?.instance().focus();
+      nextTextarea?.setSelectionRange(nextCaretPosition, nextCaretPosition);
+    }, 0);
+  };
+
+  const extractMentionIdsFromDraft = (value: string) => {
+    const ids = new Set<string>();
+    const candidates = mentionableUsers
+      .map((mention) => ({
+        id: mention.id,
+        label: cleanMentionLabel(mention.label),
+      }))
+      .filter((mention) => mention.label)
+      .sort((a, b) => b.label.length - a.label.length);
+
+    candidates.forEach((candidate) => {
+      const escapedLabel = candidate.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`(^|\\s)@${escapedLabel}(?=$|\\s|[.,!?;:)])`, "i");
+      if (regex.test(value)) {
+        ids.add(candidate.id);
+      }
+    });
+
+    return Array.from(ids);
+  };
+
+  const renderPlainMentionText = (text: string, keyPrefix: string) => {
+    const candidates = mentionableUsers
+      .map((mention) => ({
+        id: mention.id,
+        label: cleanMentionLabel(mention.label),
+      }))
+      .filter((mention) => mention.label)
+      .sort((a, b) => b.label.length - a.label.length);
+
+    if (candidates.length === 0) {
+      return text;
+    }
+
+    const escapedLabels = candidates.map((mention) =>
+      mention.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    );
+    const regex = new RegExp(`@(${escapedLabels.join("|")})(?=$|\\s|[.,!?;:)])`, "g");
+    const parts: ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(
+          <span key={`${keyPrefix}-t-${lastIndex}`}>
+            {text.substring(lastIndex, match.index)}
+          </span>
+        );
+      }
+
+      const matchedLabel = match[1];
+      const matchedUser = candidates.find((candidate) => candidate.label === matchedLabel);
+      const MentionTag = matchedUser?.id === user?.id ? "mark" : "strong";
+
+      parts.push(
+        <MentionTag
+          key={`${keyPrefix}-m-${match.index}`}
+          className={`mention-highlight${matchedUser?.id === user?.id ? " self" : ""}`}
+        >
+          @{matchedLabel}
+        </MentionTag>
+      );
+
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(<span key={`${keyPrefix}-t-${lastIndex}`}>{text.substring(lastIndex)}</span>);
+    }
+
+    return parts.length > 0 ? parts : text;
+  };
+
+  const renderCommentContent = (content: string) => {
+    const regex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts: ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(renderPlainMentionText(content.substring(lastIndex, match.index), `t-${lastIndex}`));
+      }
+
+      const label = match[1];
+      const id = match[2];
+
+      if (id === user?.id) {
+         parts.push(<mark key={`m-${match.index}`} className="mention-highlight self">@{label}</mark>);
+      } else {
+         parts.push(<strong key={`m-${match.index}`} className="mention-highlight">@{label}</strong>);
+      }
+
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < content.length) {
+      parts.push(renderPlainMentionText(content.substring(lastIndex), `t-${lastIndex}`));
+    }
+
+    return parts.length > 0 ? parts : renderPlainMentionText(content, "plain");
+  };
 
   useEffect(() => {
     setSelectedAssigneeId(task?.assigneeId ?? "");
@@ -382,12 +655,21 @@ export function TaskDetailsPage() {
     setCommentActionLoading(true);
 
     try {
+      const mentionedUserIdsRaw = commentMentions
+        .filter((mention) => commentDraft.includes(`@${cleanMentionLabel(mention.label)}`))
+        .map((mention) => mention.id)
+        .concat(extractMentionIdsFromDraft(commentDraft))
+        .filter(id => id !== user?.id);
+
       const created = await createComment({
         taskId: parsedTaskId,
         content: commentDraft.trim(),
+        mentionedUserIds: Array.from(new Set(mentionedUserIdsRaw))
       });
       setComments((prev) => [...prev, created]);
       setCommentDraft("");
+      setCommentMentions([]);
+      closeMentionDropdown();
     } catch (error) {
       setCommentsError(getErrorMessage(error, "Failed to create comment."));
     } finally {
@@ -568,6 +850,54 @@ export function TaskDetailsPage() {
 
     return false;
   }
+
+  const mentionPortal =
+    mentionQuery !== null && filteredMentionableUsers.length > 0 && dropdownRect
+      ? (() => {
+          const dropdownHeight = Math.min(272, 12 + filteredMentionableUsers.length * 58);
+          const opensAbove =
+            dropdownRect.bottom + dropdownHeight + 12 > window.innerHeight &&
+            dropdownRect.top - dropdownHeight > 8;
+          const top = opensAbove
+            ? dropdownRect.top - dropdownHeight - 6
+            : dropdownRect.bottom + 6;
+
+          return ReactDOM.createPortal(
+            <div
+              className="mention-dropdown mention-dropdown-fixed"
+              style={{
+                top,
+                left: dropdownRect.left,
+                width: Math.min(Math.max(dropdownRect.width * 0.45, 300), 380),
+                maxHeight: dropdownHeight,
+              }}
+              role="listbox"
+            >
+              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                {filteredMentionableUsers.map((mention) => (
+                  <li
+                    key={mention.id}
+                    className="mention-item"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      insertMention(mention);
+                    }}
+                    role="option"
+                    aria-selected="false"
+                  >
+                    <span className="mention-avatar">{getMentionInitials(mention.label)}</span>
+                    <span className="mention-copy">
+                      <span>{cleanMentionLabel(mention.label)}</span>
+                      <small>{getMentionMeta(mention)}</small>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>,
+            document.body
+          );
+        })()
+      : null;
 
   return (
     <div className="page-stack">
@@ -754,7 +1084,7 @@ export function TaskDetailsPage() {
                         </>
                       ) : (
                         <>
-                          <p>{comment.content}</p>
+                          <p>{renderCommentContent(comment.content)}</p>
                           <div className="inline-actions task-comment-actions">
                             {canUpdateComment && canModerateComment(comment) && (
                               <Button
@@ -783,14 +1113,23 @@ export function TaskDetailsPage() {
                 {canAddComment && (
                   <div className="task-comment-compose">
                     <TextArea
+                      ref={commentTextAreaRef}
                       value={commentDraft}
                       maxLength={5000}
                       minHeight={80}
-                      placeholder="Write a comment..."
+                      placeholder="Write a comment... (Type @ to mention)"
+                      valueChangeEvent="input"
                       onValueChanged={(event) =>
-                        setCommentDraft(String(event.value ?? ""))
+                        handleCommentDraftChange(String(event.value ?? ""))
                       }
+                      onKeyUp={handleCommentCaretChange}
+                      onFocusOut={() => {
+                        setTimeout(closeMentionDropdown, 150);
+                      }}
                     />
+
+                    {mentionPortal}
+
                     <div className="popup-actions task-comment-actions">
                       <Button
                         text={commentActionLoading ? "Adding..." : "Add Comment"}
