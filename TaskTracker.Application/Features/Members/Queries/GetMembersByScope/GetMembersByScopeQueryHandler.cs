@@ -139,13 +139,35 @@ public sealed class GetMembersByScopeQueryHandler : IRequestHandler<GetMembersBy
             .ThenBy(u => u.Email)
             .ToList();
 
+        var mentionableUsers = members
+            .Select(member => new MentionableUserDto
+            {
+                UserId = member.UserId,
+                FirstName = member.FirstName,
+                LastName = member.LastName,
+                Role = member.Role
+            })
+            .Concat(superAdminUsers
+                .Where(user => user.IsActive && !user.IsArchived && !members.Any(member => member.UserId == user.Id))
+                .Select(user => new MentionableUserDto
+                {
+                    UserId = user.Id,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Role = AppRoles.SuperAdmin
+                }))
+            .OrderBy(user => $"{user.FirstName} {user.LastName}".Trim())
+            .ThenBy(user => user.Role)
+            .ToList();
+
         return new ScopeMembersDto
         {
             ScopeType = request.ScopeType,
             ScopeId = request.ScopeId,
             Members = members,
             PendingInvitations = pendingInvitations,
-            InvitableUsers = mappedInvitableUsers
+            InvitableUsers = mappedInvitableUsers,
+            MentionableUsers = mentionableUsers
         };
     }
 }

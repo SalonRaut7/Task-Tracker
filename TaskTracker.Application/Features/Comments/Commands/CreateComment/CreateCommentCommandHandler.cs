@@ -13,17 +13,23 @@ public sealed class CreateCommentCommandHandler : IRequestHandler<CreateCommentC
     private readonly ITaskRepository _taskRepository;
     private readonly ICurrentUserService _currentUser;
     private readonly INotificationPushService _pushService;
+    private readonly INotificationDispatchService _notificationDispatchService;
+    private readonly ICommentMentionResolver _commentMentionResolver;
 
     public CreateCommentCommandHandler(
         ICommentRepository commentRepository,
         ITaskRepository taskRepository,
         ICurrentUserService currentUser,
-        INotificationPushService pushService)
+        INotificationPushService pushService,
+        INotificationDispatchService notificationDispatchService,
+        ICommentMentionResolver commentMentionResolver)
     {
         _commentRepository = commentRepository;
         _taskRepository = taskRepository;
         _currentUser = currentUser;
         _pushService = pushService;
+        _notificationDispatchService = notificationDispatchService;
+        _commentMentionResolver = commentMentionResolver;
     }
 
     public async Task<CommentDto> Handle(CreateCommentCommand request, CancellationToken cancellationToken)
@@ -64,11 +70,38 @@ public sealed class CreateCommentCommandHandler : IRequestHandler<CreateCommentC
             throw new InvalidOperationException("Author details were not found.");
         }
 
-        var dto = CommentDtoMapper.ToDto(
-            comment,
-            string.Concat(author.Value.FirstName, " ", author.Value.LastName).Trim());
+        var authorFullName = string.Concat(author.Value.FirstName, " ", author.Value.LastName).Trim();
+        var dto = CommentDtoMapper.ToDto(comment, authorFullName);
 
         await _pushService.BroadcastTaskCommentsChangedAsync(task.ProjectId, task.Id, cancellationToken);
+
+        var candidateIds = await _commentMentionResolver.ResolveMentionedUserIdsAsync(
+            request.TaskId,
+            comment.Content,
+            request.MentionedUserIds,
+            userId,
+            cancellationToken);
+
+        if (candidateIds.Count > 0)
+        {
+            var message = $"{authorFullName} mentioned you in a comment on task \"{task.Title}\".";
+
+            var notifications = candidateIds
+                .Select(recipientUserId => Notification.Create(
+                    recipientUserId,
+                    userId,
+                    authorFullName,
+                    "CommentMention",
+                    message,
+                    task.Id,
+                    task.ProjectId,
+                    false,
+                    now
+                ))
+                .ToList();
+
+            await _notificationDispatchService.DispatchAsync(notifications, cancellationToken);
+        }
 
         return dto;
     }

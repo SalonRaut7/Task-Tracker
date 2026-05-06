@@ -19,6 +19,7 @@ public sealed class ScopeMembersDto
     public IReadOnlyList<MemberDto> Members { get; init; } = [];
     public IReadOnlyList<InvitationDto> PendingInvitations { get; init; } = [];
     public IReadOnlyList<InvitableUserDto> InvitableUsers { get; init; } = [];
+    public IReadOnlyList<MentionableUserDto> MentionableUsers { get; init; } = [];
 }
 
 public sealed class InvitableUserDto
@@ -28,6 +29,14 @@ public sealed class InvitableUserDto
     public string FirstName { get; init; } = string.Empty;
     public string LastName { get; init; } = string.Empty;
     public string FullName { get; init; } = string.Empty;
+}
+
+public sealed class MentionableUserDto
+{
+    public string UserId { get; init; } = string.Empty;
+    public string FirstName { get; init; } = string.Empty;
+    public string LastName { get; init; } = string.Empty;
+    public string Role { get; init; } = string.Empty;
 }
 
 public sealed class UpdateMemberRoleDto
