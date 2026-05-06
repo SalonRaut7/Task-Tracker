@@ -33,7 +33,7 @@ public sealed class CommentMentionResolver : ICommentMentionResolver
             .Select(user => user.UserId)
             .ToHashSet(StringComparer.Ordinal);
 
-        var resolvedIds = explicitMentionedUserIds
+        var resolvedIds = (explicitMentionedUserIds ?? [])
             .Where(id => mentionableIds.Contains(id))
             .ToHashSet(StringComparer.Ordinal);
 

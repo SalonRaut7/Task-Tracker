@@ -67,7 +67,7 @@ export interface ScopeMembersResponse {
   members: ScopeMember[];
   pendingInvitations: Invitation[];
   invitableUsers: InvitableUser[];
-  mentionableUsers?: MentionableUser[];
+  mentionableUsers: MentionableUser[];
 }
 
 export interface UpdateMemberRolePayload {
