@@ -15,5 +15,7 @@ namespace TaskTracker.Domain.Interfaces
         Task AddAsync(TaskItem task, CancellationToken cancellationToken = default);
         Task UpdateAsync(TaskItem task, CancellationToken cancellationToken = default);
         Task DeleteAsync(TaskItem task, CancellationToken cancellationToken = default);
+        Task<string?> GetProjectKeyAsync(Guid projectId, CancellationToken cancellationToken = default);
+        Task UpdateTaskCodesForProjectAsync(Guid projectId, string newProjectKey, CancellationToken cancellationToken = default);
     }
 }

@@ -129,7 +129,9 @@ public class TaskChangedNotificationHandler : INotificationHandler<TaskChangedNo
 
     private static string BuildMessage(TaskChangedNotification notification, string actorName)
     {
-        var taskRef = $"TASK-{notification.TaskId}";
+        var taskRef = !string.IsNullOrWhiteSpace(notification.Task?.TaskCode)
+            ? notification.Task.TaskCode
+            : $"TASK-{notification.TaskId}";
         var taskLabel = string.IsNullOrWhiteSpace(notification.TaskTitle)
             ? taskRef
             : $"{notification.TaskTitle} ({taskRef})";

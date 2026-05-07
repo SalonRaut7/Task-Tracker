@@ -31,6 +31,8 @@ export interface TaskDto {
   reporterId: string;
   assigneeUser?: TaskUserIdentity | null;
   reporterUser?: TaskUserIdentity | null;
+  taskCode: string;
+  isExpired: boolean;
   title?: string;
   description?: string;
   status: Status;

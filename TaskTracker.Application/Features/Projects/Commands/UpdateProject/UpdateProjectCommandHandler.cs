@@ -15,19 +15,22 @@ public sealed class UpdateProjectCommandHandler : IRequestHandler<UpdateProjectC
     private readonly INotificationDispatchService _notificationDispatchService;
     private readonly ICurrentUserService _currentUser;
     private readonly IUserRepository _userRepository;
+    private readonly ITaskRepository _taskRepository;
 
     public UpdateProjectCommandHandler(
         IProjectRepository projectRepository,
         IMembershipRepository membershipRepository,
         INotificationDispatchService notificationDispatchService,
         ICurrentUserService currentUser,
-        IUserRepository userRepository)
+        IUserRepository userRepository,
+        ITaskRepository taskRepository)
     {
         _projectRepository = projectRepository;
         _membershipRepository = membershipRepository;
         _notificationDispatchService = notificationDispatchService;
         _currentUser = currentUser;
         _userRepository = userRepository;
+        _taskRepository = taskRepository;
     }
 
     public async Task<ProjectDto?> Handle(UpdateProjectCommand request, CancellationToken cancellationToken)
@@ -48,6 +51,13 @@ public sealed class UpdateProjectCommandHandler : IRequestHandler<UpdateProjectC
         project.UpdatedAt = DateTime.UtcNow;
 
         await _projectRepository.UpdateAsync(project, cancellationToken);
+
+        // Cascade TaskCode update when project key changes
+        if (!string.Equals(oldKey, project.Key, StringComparison.Ordinal))
+        {
+            await _taskRepository.UpdateTaskCodesForProjectAsync(
+                project.Id, project.Key, cancellationToken);
+        }
 
         var dto = ProjectDtoMapper.ToDto(project);
 

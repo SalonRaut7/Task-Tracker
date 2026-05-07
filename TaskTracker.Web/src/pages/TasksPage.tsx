@@ -28,6 +28,7 @@ import {
   type UpdateTaskDto,
 } from "../types/task";
 import {
+  isTaskExpired,
   priorityLabel,
   priorityOptions,
   statusLabel,
@@ -797,6 +798,11 @@ export function TasksPage() {
               }
             />
             <Column
+              dataField="taskCode"
+              caption="Task Code"
+              width={120}
+            />
+            <Column
               dataField="title"
               caption="Task"
               cellRender={({ data }: { data: TaskDto }) => data.title || "Untitled task"}
@@ -824,6 +830,16 @@ export function TasksPage() {
               cellRender={({ data }: { data: TaskDto }) =>
                 data.endDate ? new Date(`${data.endDate}T00:00:00`).toLocaleDateString() : "-"
               }
+            />
+            <Column
+              caption="Expired"
+              width={100}
+              calculateCellValue={(data: TaskDto) => isTaskExpired(data) ? "Yes" : "No"}
+              cellRender={({ data }: { data: TaskDto }) => (
+                isTaskExpired(data)
+                  ? <span className="badge badge-expired">Expired</span>
+                  : <span className="badge badge-active">Active</span>
+              )}
             />
             <Column
               caption="Actions"
@@ -910,8 +926,10 @@ export function TasksPage() {
                         className="kanban-card"
                         onClick={() => goToTaskDetails(task)}
                       >
+                        <span className="kanban-card-code">{task.taskCode || `TASK-${task.id}`}</span>
                         <strong>{task.title || "Untitled task"}</strong>
                         <span>{priorityLabel(task.priority)}</span>
+                        {isTaskExpired(task) && <span className="badge badge-expired">Expired</span>}
                       </button>
                     ))}
                 </div>

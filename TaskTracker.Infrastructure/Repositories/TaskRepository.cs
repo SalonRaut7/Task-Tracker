@@ -88,4 +88,24 @@ public class TaskRepository : ITaskRepository
         _context.Tasks.Remove(task);
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<string?> GetProjectKeyAsync(Guid projectId, CancellationToken cancellationToken = default)
+    {
+        return await _context.Projects
+            .AsNoTracking()
+            .Where(project => project.Id == projectId)
+            .Select(project => project.Key)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task UpdateTaskCodesForProjectAsync(Guid projectId, string newProjectKey, CancellationToken cancellationToken = default)
+    {
+        await _context.Tasks
+            .Where(task => task.ProjectId == projectId)
+            .ExecuteUpdateAsync(setters =>
+                setters.SetProperty(
+                    task => task.TaskCode,
+                    task => newProjectKey + "-" + task.Id.ToString()),
+                cancellationToken);
+    }
 }

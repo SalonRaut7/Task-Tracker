@@ -35,8 +35,8 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskD
     {
         var currentUserId = _currentUser.UserId!;
 
-        var projectExists = await _taskRepository.ProjectExistsAsync(command.ProjectId, cancellationToken);
-        if (!projectExists)
+        var projectKey = await _taskRepository.GetProjectKeyAsync(command.ProjectId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(projectKey))
         {
             throw new KeyNotFoundException($"Project '{command.ProjectId}' was not found.");
         }
@@ -112,6 +112,14 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskD
             command.EndDate,
             DateTime.UtcNow);
 
+        // Phase 1: Insert to get DB-assigned Id
+        await _taskRepository.AddAsync(task, cancellationToken);
+
+        // Phase 2: Assign TaskCode now that Id is known, then persist
+        task.AssignTaskCode(projectKey);
+        await _taskRepository.UpdateAsync(task, cancellationToken);
+
+        // Raise domain event after two-phase save so the snapshot has the real TaskCode
         task.RaiseChangedEvent(new TaskChangedDomainEvent
         {
             EventType = "Created",
@@ -124,8 +132,6 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskD
             Task = task.ToSnapshot(),
             TaskEntity = task,
         });
-
-        await _taskRepository.AddAsync(task, cancellationToken);
 
         return TaskDtoMapper.ToDto(task);
     }

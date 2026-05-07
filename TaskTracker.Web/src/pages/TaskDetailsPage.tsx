@@ -21,7 +21,7 @@ import { AppPermissions, AppRoles } from "../security/permissions";
 import type { BackendComment, BackendEpic, BackendSprint } from "../types/app";
 import type { MentionableUser, ScopeMember } from "../types/invitation";
 import type { TaskDto, TaskUserIdentity, UpdateTaskDto } from "../types/task";
-import { priorityLabel, statusLabel } from "../utils/taskPresentation";
+import { isTaskExpired, priorityLabel, statusLabel } from "../utils/taskPresentation";
 import { buildConnection } from "../services/signalRService";
 
 function toDisplayDate(value: string | null | undefined): string {
@@ -903,7 +903,12 @@ export function TaskDetailsPage() {
     <div className="page-stack">
       <section>
         <Link to="/tasks">Back to Tasks</Link>
-        <h1>{task?.title || `Task #${parsedTaskId}`}</h1>
+        <h1>
+          {task?.taskCode && <span className="task-code-badge">{task.taskCode}</span>}
+          {" "}
+          {task?.title || `Task #${parsedTaskId}`}
+          {task && isTaskExpired(task) && <span className="badge badge-expired" style={{ marginLeft: 12, verticalAlign: "middle" }}>Expired</span>}
+        </h1>
         <p className="page-subtitle">Task details and collaboration thread</p>
       </section>
 

@@ -27,7 +27,20 @@ export function priorityLabel(priority: TaskPriority): string {
 }
 
 export function taskKey(task: TaskDto): string {
-  return `TASK-${task.id}`;
+  return task.taskCode || `TASK-${task.id}`;
+}
+
+export function isTaskExpired(task: TaskDto): boolean {
+  if (task.isExpired) return true;
+  if (!task.endDate) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(`${task.endDate}T00:00:00`);
+  return (
+    end < today &&
+    task.status !== Status.Completed &&
+    task.status !== Status.Cancelled
+  );
 }
 
 export function isTaskCompleted(task: TaskDto): boolean {
