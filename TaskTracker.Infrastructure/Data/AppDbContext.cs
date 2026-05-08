@@ -30,6 +30,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Epic> Epics => Set<Epic>();
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<Comment> Comments => Set<Comment>();
+    public DbSet<TaskAttachment> TaskAttachments => Set<TaskAttachment>();
     public DbSet<UserOrganization> UserOrganizations => Set<UserOrganization>();
     public DbSet<UserProject> UserProjects => Set<UserProject>();
     public DbSet<Invitation> Invitations => Set<Invitation>();

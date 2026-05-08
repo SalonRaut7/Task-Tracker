@@ -20,8 +20,16 @@ namespace TaskTracker.Domain.Entities
         public TaskPriority Priority { get; private set; } = TaskPriority.Medium;
         public DateOnly? StartDate { get; private set; }
         public DateOnly? EndDate { get; private set; }
+        public string TaskCode { get; private set; } = string.Empty;
         public DateTime CreatedAt { get; private set; }
         public DateTime UpdatedAt { get; private set; }
+
+        [NotMapped]
+        public bool IsExpired =>
+            EndDate.HasValue
+            && EndDate.Value < DateOnly.FromDateTime(DateTime.UtcNow)
+            && Status != Status.Completed
+            && Status != Status.Cancelled;
 
         public Project Project { get; private set; } = null!;
         public Epic? Epic { get; private set; }
@@ -29,6 +37,7 @@ namespace TaskTracker.Domain.Entities
         public ApplicationUser? Assignee { get; private set; }
         public ApplicationUser Reporter { get; private set; } = null!;
         public ICollection<Comment> Comments { get; private set; } = new List<Comment>();
+        public ICollection<TaskAttachment> Attachments { get; private set; } = new List<TaskAttachment>();
         [NotMapped]
         private readonly List<TaskChangedDomainEvent> _domainEvents = [];
         [NotMapped]
@@ -150,6 +159,16 @@ namespace TaskTracker.Domain.Entities
             _domainEvents.Clear();
         }
 
+        public void AssignTaskCode(string projectKey)
+        {
+            if (Id <= 0)
+                throw new InvalidOperationException("TaskCode can only be assigned after the task ID is generated.");
+            if (string.IsNullOrWhiteSpace(projectKey))
+                throw new InvalidOperationException("Project key is required to generate TaskCode.");
+
+            TaskCode = $"{projectKey}-{Id}";
+        }
+
         public TaskSnapshot ToSnapshot()
         {
             return new TaskSnapshot
@@ -166,6 +185,7 @@ namespace TaskTracker.Domain.Entities
                 Priority = Priority,
                 StartDate = StartDate,
                 EndDate = EndDate,
+                TaskCode = TaskCode,
                 CreatedAt = CreatedAt,
                 UpdatedAt = UpdatedAt,
             };

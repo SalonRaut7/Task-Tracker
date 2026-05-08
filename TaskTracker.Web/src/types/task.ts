@@ -31,6 +31,8 @@ export interface TaskDto {
   reporterId: string;
   assigneeUser?: TaskUserIdentity | null;
   reporterUser?: TaskUserIdentity | null;
+  taskCode: string;
+  isExpired: boolean;
   title?: string;
   description?: string;
   status: Status;
@@ -67,3 +69,15 @@ export interface UpdateTaskDto {
   endDate?: string | null;
   endDateExtensionDays?: number | null;
 }
+
+export interface TaskAttachmentDto {
+  id: string;
+  taskId: number;
+  uploaderId: string;
+  fileName: string;
+  contentType: string;
+  fileSizeBytes: number;
+  url: string;
+  createdAt: string;
+}
+

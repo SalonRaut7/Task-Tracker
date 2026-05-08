@@ -49,6 +49,7 @@ public sealed class EvaluateDueTasksCommandHandler : IRequestHandler<EvaluateDue
             {
                 Id = task.Id,
                 Title = task.Title,
+                TaskCode = task.TaskCode,
                 ProjectId = task.ProjectId,
                 EndDate = task.EndDate!.Value
             })
@@ -78,9 +79,13 @@ public sealed class EvaluateDueTasksCommandHandler : IRequestHandler<EvaluateDue
                 continue;
             }
 
+            var taskCode = !string.IsNullOrWhiteSpace(task.TaskCode)
+                ? task.TaskCode
+                : $"TASK-{task.Id}";
+
             var taskRef = string.IsNullOrWhiteSpace(task.Title)
-                ? $"TASK-{task.Id}"
-                : $"{task.Title} (TASK-{task.Id})";
+                ? taskCode
+                : $"{task.Title} ({taskCode})";
 
             var message = isOverdue
                 ? $"{taskRef} is past its due date ({task.EndDate:MMM dd})"
@@ -120,6 +125,7 @@ public sealed class EvaluateDueTasksCommandHandler : IRequestHandler<EvaluateDue
     {
         public int Id { get; init; }
         public string Title { get; init; } = string.Empty;
+        public string TaskCode { get; init; } = string.Empty;
         public Guid ProjectId { get; init; }
         public DateOnly EndDate { get; init; }
     }

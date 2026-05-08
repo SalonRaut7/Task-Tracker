@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Domain.Entities;
+using TaskTracker.Domain.Enums;
 using TaskTracker.Domain.Events;
 
 namespace TaskTracker.Application.Mapping;
@@ -23,6 +24,8 @@ public static class TaskDtoMapper
             Priority = task.Priority,
             StartDate = task.StartDate,
             EndDate = task.EndDate,
+            TaskCode = task.TaskCode,
+            IsExpired = task.IsExpired,
             CreatedAt = task.CreatedAt,
             UpdatedAt = task.UpdatedAt,
         };
@@ -30,6 +33,8 @@ public static class TaskDtoMapper
 
     public static TaskDto ToDto(TaskSnapshot snapshot)
     {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
         return new TaskDto
         {
             Id = snapshot.Id,
@@ -44,6 +49,11 @@ public static class TaskDtoMapper
             Priority = snapshot.Priority,
             StartDate = snapshot.StartDate,
             EndDate = snapshot.EndDate,
+            TaskCode = snapshot.TaskCode,
+            IsExpired = snapshot.EndDate.HasValue
+                && snapshot.EndDate.Value < today
+                && snapshot.Status != Status.Completed
+                && snapshot.Status != Status.Cancelled,
             CreatedAt = snapshot.CreatedAt,
             UpdatedAt = snapshot.UpdatedAt,
         };
@@ -51,6 +61,8 @@ public static class TaskDtoMapper
 
     public static Expression<Func<TaskItem, TaskDto>> Projection()
     {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
         return task => new TaskDto
         {
             Id = task.Id,
@@ -65,6 +77,11 @@ public static class TaskDtoMapper
             Priority = task.Priority,
             StartDate = task.StartDate,
             EndDate = task.EndDate,
+            TaskCode = task.TaskCode,
+            IsExpired = task.EndDate.HasValue
+                && task.EndDate.Value < today
+                && task.Status != Status.Completed
+                && task.Status != Status.Cancelled,
             CreatedAt = task.CreatedAt,
             UpdatedAt = task.UpdatedAt,
         };

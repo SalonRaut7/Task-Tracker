@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "devextreme-react/button";
 import DataGrid, { Column } from "devextreme-react/data-grid";
 import DateBox from "devextreme-react/date-box";
@@ -17,7 +17,14 @@ import { getEpics } from "../services/epicService";
 import { getMembersByScope } from "../services/memberService";
 import { getSprints } from "../services/sprintService";
 import { loadTasks } from "../services/taskService";
+import { uploadAttachment, getAttachments, deleteAttachment, downloadAttachment, getAttachmentDownloadUrl } from "../services/attachmentService";
 import { AppPermissions } from "../security/permissions";
+import {
+  ALLOWED_EXTENSIONS_ACCEPT,
+  MAX_ATTACHMENTS_PER_TASK,
+  validateFiles,
+  formatFileSize,
+} from "../constants/attachments";
 import type { BackendEpic, BackendSprint } from "../types/app";
 import type { ScopeMember } from "../types/invitation";
 import {
@@ -25,9 +32,11 @@ import {
   TaskPriority,
   type CreateTaskDto,
   type TaskDto,
+  type TaskAttachmentDto,
   type UpdateTaskDto,
 } from "../types/task";
 import {
+  isTaskExpired,
   priorityLabel,
   priorityOptions,
   statusLabel,
@@ -209,6 +218,17 @@ export function TasksPage() {
   });
 
   const [editForm, setEditForm] = useState<TaskForm | null>(null);
+
+  // ── Attachment state ──
+  const [createFiles, setCreateFiles] = useState<File[]>([]);
+  const [createFileErrors, setCreateFileErrors] = useState<string[]>([]);
+  const [attachmentWarning, setAttachmentWarning] = useState("");
+  const [modalAttachments, setModalAttachments] = useState<TaskAttachmentDto[]>([]);
+  const [modalAttachmentsLoading, setModalAttachmentsLoading] = useState(false);
+  const [modalAttachmentUploadLoading, setModalAttachmentUploadLoading] = useState(false);
+  const modalFileInputRef = useRef<HTMLInputElement>(null);
+  const createFileInputRef = useRef<HTMLInputElement>(null);
+
   const [createEpics, setCreateEpics] = useState<BackendEpic[]>([]);
   const [createSprints, setCreateSprints] = useState<BackendSprint[]>([]);
   const [createAssignableMembers, setCreateAssignableMembers] = useState<ScopeMember[]>([]);
@@ -554,9 +574,79 @@ export function TasksPage() {
 
 
 
+  // ── Attachment helpers ──
+  const handleCreateFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = event.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const newFiles = Array.from(fileList);
+    const nextFiles = [...createFiles, ...newFiles];
+    setCreateFiles(nextFiles);
+    setCreateFileErrors(validateFiles(nextFiles, 0).errors);
+    event.target.value = "";
+  };
+
+  const removeCreateFile = (index: number) => {
+    setCreateFiles((prev) => {
+      const nextFiles = prev.filter((_, i) => i !== index);
+      setCreateFileErrors(validateFiles(nextFiles, 0).errors);
+      return nextFiles;
+    });
+  };
+
+  const loadModalAttachments = useCallback(async (taskId: number) => {
+    setModalAttachmentsLoading(true);
+    try {
+      const result = await getAttachments(taskId);
+      setModalAttachments(result);
+    } catch {
+      setModalAttachments([]);
+    } finally {
+      setModalAttachmentsLoading(false);
+    }
+  }, []);
+
+  const handleModalAttachmentUpload = async (taskId: number, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const fileArr = Array.from(files);
+    const { valid, errors } = validateFiles(fileArr, modalAttachments.length);
+    if (errors.length > 0) {
+      setRequestError(errors.join(" "));
+      return;
+    }
+    setModalAttachmentUploadLoading(true);
+    setRequestError("");
+    try {
+      const results = await Promise.allSettled(
+        valid.map((file) => uploadAttachment(taskId, file))
+      );
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length > 0) {
+        setRequestError(`${failed.length} file(s) failed to upload.`);
+      }
+      await loadModalAttachments(taskId);
+    } catch (error) {
+      setRequestError(getErrorMessage(error, "Failed to upload attachments."));
+    } finally {
+      setModalAttachmentUploadLoading(false);
+      if (modalFileInputRef.current) modalFileInputRef.current.value = "";
+    }
+  };
+
+  const handleModalAttachmentDelete = async (attachmentId: string, taskId: number) => {
+    if (!window.confirm("Delete this attachment?")) return;
+    setRequestError("");
+    try {
+      await deleteAttachment(attachmentId, taskId);
+      setModalAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+    } catch (error) {
+      setRequestError(getErrorMessage(error, "Failed to delete attachment."));
+    }
+  };
+
   const handleCreateTask = async (event: React.FormEvent) => {
     event.preventDefault();
     setRequestError("");
+    setAttachmentWarning("");
 
     if (!canCreate) {
       setRequestError("You do not have permission to create tasks.");
@@ -569,9 +659,29 @@ export function TasksPage() {
       return;
     }
 
+    const attachmentValidationErrors = validateFiles(createFiles, 0).errors;
+    if (attachmentValidationErrors.length > 0) {
+      setRequestError(attachmentValidationErrors.join(" "));
+      return;
+    }
+
     setRequestLoading(true);
     try {
-      await addTask(toCreateDto(createForm));
+      const createdTask = await addTask(toCreateDto(createForm));
+
+      // Upload attachments in parallel after task creation
+      if (createFiles.length > 0 && createdTask?.id) {
+        const results = await Promise.allSettled(
+          createFiles.map((file) => uploadAttachment(createdTask.id, file))
+        );
+        const failed = results.filter((r) => r.status === "rejected");
+        if (failed.length > 0) {
+          setAttachmentWarning(
+            `Task created successfully, but ${failed.length} file(s) failed to upload.`
+          );
+        }
+      }
+
       setReloadTick((previous) => previous + 1);
       setCreateForm({
         projectId: createForm.projectId,
@@ -585,6 +695,8 @@ export function TasksPage() {
         startDate: "",
         endDate: "",
       });
+      setCreateFiles([]);
+      setCreateFileErrors([]);
       setShowCreate(false);
     } catch (error) {
       setRequestError(getErrorMessage(error, "Failed to create task."));
@@ -598,6 +710,8 @@ export function TasksPage() {
     setTaskPopupMode(mode);
     setEditForm(toTaskForm(task));
     setRequestError("");
+    setModalAttachments([]);
+    void loadModalAttachments(task.id);
   };
 
   const closeTaskDetails = () => {
@@ -605,6 +719,7 @@ export function TasksPage() {
     setTaskPopupMode(null);
     setEditForm(null);
     setRequestError("");
+    setModalAttachments([]);
   };
 
   const handleUpdateTask = async () => {
@@ -797,6 +912,11 @@ export function TasksPage() {
               }
             />
             <Column
+              dataField="taskCode"
+              caption="Task Code"
+              width={120}
+            />
+            <Column
               dataField="title"
               caption="Task"
               cellRender={({ data }: { data: TaskDto }) => data.title || "Untitled task"}
@@ -824,6 +944,16 @@ export function TasksPage() {
               cellRender={({ data }: { data: TaskDto }) =>
                 data.endDate ? new Date(`${data.endDate}T00:00:00`).toLocaleDateString() : "-"
               }
+            />
+            <Column
+              caption="Expired"
+              width={100}
+              calculateCellValue={(data: TaskDto) => isTaskExpired(data) ? "Yes" : "No"}
+              cellRender={({ data }: { data: TaskDto }) => (
+                isTaskExpired(data)
+                  ? <span className="badge badge-expired">Expired</span>
+                  : <span className="badge badge-active">Active</span>
+              )}
             />
             <Column
               caption="Actions"
@@ -910,8 +1040,10 @@ export function TasksPage() {
                         className="kanban-card"
                         onClick={() => goToTaskDetails(task)}
                       >
+                        <span className="kanban-card-code">{task.taskCode || `TASK-${task.id}`}</span>
                         <strong>{task.title || "Untitled task"}</strong>
                         <span>{priorityLabel(task.priority)}</span>
+                        {isTaskExpired(task) && <span className="badge badge-expired">Expired</span>}
                       </button>
                     ))}
                 </div>
@@ -1172,6 +1304,59 @@ export function TasksPage() {
                 />
               </label>
 
+              <div className="task-attachments-section task-attachments-section--full-width">
+                <h4 className="task-attachments-title">Attachments ({modalAttachments.length}/{MAX_ATTACHMENTS_PER_TASK})</h4>
+                {modalAttachmentsLoading && <div className="page-inline-info">Loading attachments...</div>}
+
+                {modalAttachments.length > 0 && (
+                  <div className="attachment-list">
+                    {modalAttachments.map((att) => (
+                      <div key={att.id} className="attachment-item">
+                        <span className="attachment-file">
+                          <a
+                            href={getAttachmentDownloadUrl(att.taskId, att.id)}
+                            className="attachment-file-link"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              void downloadAttachment(att.taskId, att.id, att.fileName);
+                            }}
+                          >
+                            {att.fileName}
+                          </a>
+                        </span>
+                        <span className="attachment-meta">{formatFileSize(att.fileSizeBytes)}</span>
+                        {taskPopupMode === "edit" && canUpdate && (
+                          <Button
+                            icon="trash"
+                            stylingMode="text"
+                            hint="Delete attachment"
+                            onClick={() => void handleModalAttachmentDelete(att.id, selectedTask!.id)}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!modalAttachmentsLoading && modalAttachments.length === 0 && (
+                  <div className="page-inline-info">No attachments.</div>
+                )}
+
+                {taskPopupMode === "edit" && canUpdate && modalAttachments.length < MAX_ATTACHMENTS_PER_TASK && (
+                  <div className="attachment-upload-toolbar">
+                    <input
+                      ref={modalFileInputRef}
+                      type="file"
+                      multiple
+                      accept={ALLOWED_EXTENSIONS_ACCEPT}
+                      onChange={(e) => void handleModalAttachmentUpload(selectedTask!.id, e.target.files)}
+                      disabled={modalAttachmentUploadLoading}
+                    />
+                    {modalAttachmentUploadLoading && <span className="attachment-upload-note">Uploading...</span>}
+                  </div>
+                )}
+              </div>
+
               <div className="popup-actions task-popup-actions">
                 {taskPopupMode === "edit" ? (
                   <>
@@ -1202,6 +1387,9 @@ export function TasksPage() {
         onHiding={() => {
           setShowCreate(false);
           setRequestError("");
+          setCreateFiles([]);
+          setCreateFileErrors([]);
+          setAttachmentWarning("");
         }}
         title="Create New Task"
         width={createPopupWidth}
@@ -1387,13 +1575,47 @@ export function TasksPage() {
             </label>
           </div>
 
+          {/* ── Attachments (optional) ── */}
+          <div className="task-attachments-section">
+            <label>
+              Attachments <span className="attachment-upload-note">(optional, max {MAX_ATTACHMENTS_PER_TASK} files, 10 MB each)</span>
+            </label>
+            <input
+              ref={createFileInputRef}
+              type="file"
+              multiple
+              accept={ALLOWED_EXTENSIONS_ACCEPT}
+              onChange={handleCreateFileSelect}
+            />
+            {createFileErrors.length > 0 && (
+              <div className="form-error">
+                {createFileErrors.map((err, i) => (<div key={i}>{err}</div>))}
+              </div>
+            )}
+            {createFiles.length > 0 && (
+              <div className="attachment-list">
+                {createFiles.map((file, i) => (
+                  <div key={i} className="attachment-item attachment-item--pending">
+                    <span className="attachment-file">
+                      <span className="attachment-file-name">{file.name}</span>
+                      <span className="attachment-meta">{formatFileSize(file.size)}</span>
+                    </span>
+                    <Button icon="close" stylingMode="text" hint="Remove" onClick={() => removeCreateFile(i)} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {attachmentWarning && <div className="page-inline-info">{attachmentWarning}</div>}
+
           <div className="popup-actions">
-            <Button text="Cancel" stylingMode="outlined" onClick={() => setShowCreate(false)} />
+            <Button text="Cancel" stylingMode="outlined" onClick={() => { setShowCreate(false); setCreateFiles([]); setCreateFileErrors([]); setAttachmentWarning(""); }} />
             <Button
               text={requestLoading ? "Creating..." : "Create Task"}
               type="default"
               useSubmitBehavior
-              disabled={requestLoading || !canCreate}
+              disabled={requestLoading || !canCreate || validateFiles(createFiles, 0).errors.length > 0}
             />
           </div>
         </form>

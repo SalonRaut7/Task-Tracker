@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.Configure<InviteOptions>(configuration.GetSection(InviteOptions.SectionName));
         services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
         services.Configure<IdentitySecurityOptions>(configuration.GetSection(IdentitySecurityOptions.SectionName));
+        services.Configure<CloudinaryOptions>(configuration.GetSection(CloudinaryOptions.SectionName));
 
         // ── ASP.NET Identity ─────────────────────────────────────
         var identitySecurityOptions = configuration.GetSection(IdentitySecurityOptions.SectionName).Get<IdentitySecurityOptions>() ?? new IdentitySecurityOptions();
@@ -60,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
         services.AddScoped<IAuthorizationScopeResolver, AuthorizationScopeResolver>();
         services.AddScoped<INotificationPushService, NotificationPushService>();
+        services.AddScoped<IFileStorageService, CloudinaryStorageService>();
 
         // ── Repositories ─────────────────────────────────────────
         services.AddScoped<ITaskRepository, TaskRepository>();
@@ -74,6 +76,7 @@ public static class DependencyInjection
         services.AddScoped<IMembershipRepository, MembershipRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<ITaskAttachmentRepository, TaskAttachmentRepository>();
 
         return services;
     }

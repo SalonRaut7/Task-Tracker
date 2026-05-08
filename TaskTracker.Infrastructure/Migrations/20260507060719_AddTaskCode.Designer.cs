@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TaskTracker.Infrastructure.Data;
@@ -11,9 +12,11 @@ using TaskTracker.Infrastructure.Data;
 namespace TaskTracker.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260507060719_AddTaskCode")]
+    partial class AddTaskCode
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -649,59 +652,6 @@ namespace TaskTracker.Infrastructure.Migrations
                     b.ToTable("Sprints");
                 });
 
-            modelBuilder.Entity("TaskTracker.Domain.Entities.TaskAttachment", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("CloudinaryPublicId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("CloudinaryUrl")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<long>("FileSizeBytes")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("ResourceType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<int>("TaskId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("UploaderId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TaskId");
-
-                    b.HasIndex("UploaderId");
-
-                    b.ToTable("TaskAttachments");
-                });
-
             modelBuilder.Entity("TaskTracker.Domain.Entities.TaskItem", b =>
                 {
                     b.Property<int>("Id")
@@ -1002,25 +952,6 @@ namespace TaskTracker.Infrastructure.Migrations
                     b.Navigation("Project");
                 });
 
-            modelBuilder.Entity("TaskTracker.Domain.Entities.TaskAttachment", b =>
-                {
-                    b.HasOne("TaskTracker.Domain.Entities.TaskItem", "Task")
-                        .WithMany("Attachments")
-                        .HasForeignKey("TaskId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TaskTracker.Domain.Entities.Identity.ApplicationUser", "Uploader")
-                        .WithMany()
-                        .HasForeignKey("UploaderId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Task");
-
-                    b.Navigation("Uploader");
-                });
-
             modelBuilder.Entity("TaskTracker.Domain.Entities.TaskItem", b =>
                 {
                     b.HasOne("TaskTracker.Domain.Entities.Identity.ApplicationUser", "Assignee")
@@ -1158,8 +1089,6 @@ namespace TaskTracker.Infrastructure.Migrations
 
             modelBuilder.Entity("TaskTracker.Domain.Entities.TaskItem", b =>
                 {
-                    b.Navigation("Attachments");
-
                     b.Navigation("Comments");
                 });
 #pragma warning restore 612, 618

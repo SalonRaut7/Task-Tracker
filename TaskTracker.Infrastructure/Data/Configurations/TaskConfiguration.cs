@@ -12,11 +12,19 @@ public class TaskConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(t => t.Description).HasMaxLength(500);
         builder.Property(t => t.ReporterId).IsRequired();
 
+        builder.Property(t => t.TaskCode)
+            .HasMaxLength(20)
+            .IsRequired()
+            .HasDefaultValue("");
+
         builder.HasIndex(t => t.ProjectId);
         builder.HasIndex(t => t.EpicId);
         builder.HasIndex(t => t.SprintId);
         builder.HasIndex(t => t.AssigneeId);
         builder.HasIndex(t => t.ReporterId);
+        builder.HasIndex(t => t.TaskCode)
+            .IsUnique()
+            .HasFilter("\"TaskCode\" != ''");
 
         builder.HasOne(t => t.Project)
             .WithMany(p => p.Tasks)
