@@ -85,14 +85,6 @@ function validateTaskForm(form: TaskForm): string | null {
     return "Project is required.";
   }
 
-  if (!form.epicId.trim()) {
-    return "Epic is required.";
-  }
-
-  if (!form.sprintId.trim()) {
-    return "Sprint is required.";
-  }
-
   if (!form.title.trim()) {
     return "Title is required.";
   }
@@ -132,8 +124,8 @@ function validateTaskForm(form: TaskForm): string | null {
 function toCreateDto(form: TaskForm): CreateTaskDto {
   return {
     projectId: form.projectId,
-    epicId: form.epicId.trim(),
-    sprintId: form.sprintId.trim(),
+    epicId: form.epicId.trim() || null,
+    sprintId: form.sprintId.trim() || null,
     assigneeId: form.assigneeId.trim() || null,
     title: form.title.trim(),
     description: form.description.trim() || undefined,
@@ -146,8 +138,8 @@ function toCreateDto(form: TaskForm): CreateTaskDto {
 
 function toUpdateDto(form: TaskForm): UpdateTaskDto {
   return {
-    epicId: form.epicId.trim(),
-    sprintId: form.sprintId.trim(),
+    epicId: form.epicId.trim() || null,
+    sprintId: form.sprintId.trim() || null,
     assigneeId: form.assigneeId.trim() || null,
     title: form.title.trim(),
     description: form.description.trim() || undefined,
@@ -263,12 +255,6 @@ export function TasksPage() {
 
   const detailsPopupWidth =
     viewport.width <= 820 ? Math.max(340, viewport.width - 20) : viewport.width <= 1440 ? 680 : 760;
-
-  const createLinksMissing =
-    Boolean(createForm.projectId) && (createEpics.length === 0 || createSprints.length === 0);
-
-  const editLinksMissing =
-    Boolean(editForm?.projectId) && (editEpics.length === 0 || editSprints.length === 0);
 
   const editEpicNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -1182,6 +1168,8 @@ export function TasksPage() {
                     valueExpr="id"
                     value={editForm.epicId || null}
                     readOnly={false}
+                    showClearButton={true}
+                    placeholder="Select epic (optional)"
                     dropDownOptions={selectBoxDropDownOptions}
                     onValueChanged={(event) =>
                       setEditForm((prev) =>
@@ -1210,6 +1198,8 @@ export function TasksPage() {
                     valueExpr="id"
                     value={editForm.sprintId || null}
                     readOnly={false}
+                    showClearButton={true}
+                    placeholder="Select sprint (optional)"
                     dropDownOptions={selectBoxDropDownOptions}
                     onValueChanged={(event) =>
                       setEditForm((prev) =>
@@ -1228,12 +1218,6 @@ export function TasksPage() {
                   />
                 )}
               </label>
-
-              {editLinksMissing && (
-                <div className="form-error">
-                  The selected project must have at least one epic and one sprint.
-                </div>
-              )}
 
               <label>
                 Status
@@ -1370,7 +1354,7 @@ export function TasksPage() {
                       text={requestLoading ? "Saving..." : "Save"}
                       type="default"
                       onClick={handleUpdateTask}
-                      disabled={requestLoading || !canUpdate || editLinksMissing}
+                      disabled={requestLoading || !canUpdate}
                     />
                   </>
                 ) : (
@@ -1431,6 +1415,8 @@ export function TasksPage() {
                 displayExpr="title"
                 valueExpr="id"
                 value={createForm.epicId || null}
+                showClearButton={true}
+                placeholder="Select epic (optional)"
                 dropDownOptions={selectBoxDropDownOptions}
                 onValueChanged={(event) =>
                   setCreateForm((prev) => ({
@@ -1448,6 +1434,8 @@ export function TasksPage() {
                 displayExpr="name"
                 valueExpr="id"
                 value={createForm.sprintId || null}
+                showClearButton={true}
+                placeholder="Select sprint (optional)"
                 dropDownOptions={selectBoxDropDownOptions}
                 onValueChanged={(event) =>
                   setCreateForm((prev) => ({
@@ -1458,12 +1446,6 @@ export function TasksPage() {
               />
             </label>
           </div>
-
-          {createLinksMissing && (
-            <div className="form-error">
-              The selected project must have at least one epic and one sprint.
-            </div>
-          )}
 
           <label>
             Assignee
