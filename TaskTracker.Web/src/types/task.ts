@@ -69,3 +69,15 @@ export interface UpdateTaskDto {
   endDate?: string | null;
   endDateExtensionDays?: number | null;
 }
+
+export interface TaskAttachmentDto {
+  id: string;
+  taskId: number;
+  uploaderId: string;
+  fileName: string;
+  contentType: string;
+  fileSizeBytes: number;
+  url: string;
+  createdAt: string;
+}
+

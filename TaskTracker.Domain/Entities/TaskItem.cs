@@ -37,6 +37,7 @@ namespace TaskTracker.Domain.Entities
         public ApplicationUser? Assignee { get; private set; }
         public ApplicationUser Reporter { get; private set; } = null!;
         public ICollection<Comment> Comments { get; private set; } = new List<Comment>();
+        public ICollection<TaskAttachment> Attachments { get; private set; } = new List<TaskAttachment>();
         [NotMapped]
         private readonly List<TaskChangedDomainEvent> _domainEvents = [];
         [NotMapped]

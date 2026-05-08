@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactDOM from "react-dom";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Button } from "devextreme-react/button";
+import DateBox from "devextreme-react/date-box";
 import SelectBox from "devextreme-react/select-box";
 import TextArea, { type TextAreaRef } from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
@@ -16,13 +17,22 @@ import { getEpics } from "../services/epicService";
 import { getMembersByScope } from "../services/memberService";
 import { getSprints } from "../services/sprintService";
 import { getTaskById } from "../services/taskService";
+import { deleteTask } from "../services/taskService";
+import { uploadAttachment, getAttachments, deleteAttachment, downloadAttachment, getAttachmentDownloadUrl } from "../services/attachmentService";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import { AppPermissions, AppRoles } from "../security/permissions";
+import {
+  ALLOWED_EXTENSIONS_ACCEPT,
+  MAX_ATTACHMENTS_PER_TASK,
+  validateFiles,
+  formatFileSize,
+} from "../constants/attachments";
 import type { BackendComment, BackendEpic, BackendSprint } from "../types/app";
 import type { MentionableUser, ScopeMember } from "../types/invitation";
-import type { TaskDto, TaskUserIdentity, UpdateTaskDto } from "../types/task";
-import { isTaskExpired, priorityLabel, statusLabel } from "../utils/taskPresentation";
+import type { TaskDto, TaskUserIdentity, TaskAttachmentDto, UpdateTaskDto } from "../types/task";
+import { isTaskExpired, priorityLabel, priorityOptions, statusLabel, statusOptions } from "../utils/taskPresentation";
 import { buildConnection } from "../services/signalRService";
+import { toDateOnly } from "../utils/toDateOnly";
 
 function toDisplayDate(value: string | null | undefined): string {
   if (!value) {
@@ -46,8 +56,78 @@ function formatArchivedAssigneeOption(
   return `${name}${roleSuffix} (${status})`;
 }
 
+interface TaskEditForm {
+  projectId: string;
+  epicId: string;
+  sprintId: string;
+  assigneeId: string;
+  title: string;
+  description: string;
+  status: TaskDto["status"];
+  priority: TaskDto["priority"];
+  startDate: string;
+  endDate: string;
+}
+
+function validateTaskEditForm(form: TaskEditForm): string | null {
+  if (!form.title.trim()) {
+    return "Title is required.";
+  }
+
+  if (form.title.trim().length > 100) {
+    return "Title must be 100 characters or less.";
+  }
+
+  if (form.description.trim().length > 500) {
+    return "Description must be 500 characters or less.";
+  }
+
+  if (!form.epicId.trim()) {
+    return "Epic is required.";
+  }
+
+  if (!form.sprintId.trim()) {
+    return "Sprint is required.";
+  }
+
+  if (!form.startDate) {
+    return "Start date is required.";
+  }
+
+  if (!form.endDate) {
+    return "End date is required.";
+  }
+
+  if (form.startDate && form.endDate) {
+    const startDate = new Date(`${form.startDate}T00:00:00`).getTime();
+    const endDate = new Date(`${form.endDate}T00:00:00`).getTime();
+
+    if (startDate > endDate) {
+      return "Start date cannot be after end date.";
+    }
+  }
+
+  return null;
+}
+
+function toTaskEditForm(task: TaskDto): TaskEditForm {
+  return {
+    projectId: task.projectId,
+    epicId: task.epicId ?? "",
+    sprintId: task.sprintId ?? "",
+    assigneeId: task.assigneeId ?? "",
+    title: task.title ?? "",
+    description: task.description ?? "",
+    status: task.status,
+    priority: task.priority,
+    startDate: task.startDate ?? "",
+    endDate: task.endDate ?? "",
+  };
+}
+
 export function TaskDetailsPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { projectId, taskId } = useParams();
   const { tasks, projects, hasPermission, user, userPermissions, updateTask } = useApp();
 
@@ -81,6 +161,18 @@ export function TaskDetailsPage() {
   const [reassignLoading, setReassignLoading] = useState(false);
   const [reassignError, setReassignError] = useState("");
   const [reassignSuccess, setReassignSuccess] = useState("");
+  const [taskEditMode, setTaskEditMode] = useState<"view" | "edit">("view");
+  const [taskEditForm, setTaskEditForm] = useState<TaskEditForm | null>(null);
+  const [taskActionLoading, setTaskActionLoading] = useState(false);
+
+  // ── Attachment state ──
+  const [attachments, setAttachments] = useState<TaskAttachmentDto[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentUploadLoading, setAttachmentUploadLoading] = useState(false);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [selectedAttachmentFiles, setSelectedAttachmentFiles] = useState<File[]>([]);
+  const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
+  const attachmentFileInputRef = useRef<HTMLInputElement>(null);
 
   const parsedTaskId = useMemo(() => {
     const numeric = Number(taskId);
@@ -95,6 +187,16 @@ export function TaskDetailsPage() {
     const queryProjectId = new URLSearchParams(location.search).get("projectId");
     return queryProjectId?.trim() ? queryProjectId : null;
   }, [projectId, location.search]);
+
+  const canUpdateTask = useMemo(() => {
+    if (!resolvedProjectId) return false;
+    return hasPermission(AppPermissions.TasksUpdate, "Project", resolvedProjectId);
+  }, [hasPermission, resolvedProjectId]);
+
+  const canDeleteTask = useMemo(() => {
+    if (!resolvedProjectId) return false;
+    return hasPermission(AppPermissions.TasksDelete, "Project", resolvedProjectId);
+  }, [hasPermission, resolvedProjectId]);
 
   const projectNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -119,6 +221,59 @@ export function TaskDetailsPage() {
     });
     return map;
   }, [sprints]);
+
+  const editEpicsForSelect = useMemo(() => {
+    const currentEpicId = taskEditForm?.epicId?.trim();
+    if (!currentEpicId) {
+      return epics;
+    }
+
+    if (epics.some((epic) => epic.id === currentEpicId)) {
+      return epics;
+    }
+
+    return [
+      {
+        id: currentEpicId,
+        projectId: taskEditForm?.projectId ?? "",
+        title: currentEpicId,
+        status: 0,
+      },
+      ...epics,
+    ];
+  }, [epics, taskEditForm?.epicId, taskEditForm?.projectId]);
+
+  const editSprintsForSelect = useMemo(() => {
+    const currentSprintId = taskEditForm?.sprintId?.trim();
+    if (!currentSprintId) {
+      return sprints;
+    }
+
+    if (sprints.some((sprint) => sprint.id === currentSprintId)) {
+      return sprints;
+    }
+
+    return [
+      {
+        id: currentSprintId,
+        projectId: taskEditForm?.projectId ?? "",
+        name: currentSprintId,
+        goal: undefined,
+        startDate: "",
+        endDate: "",
+        status: 0,
+      },
+      ...sprints,
+    ];
+  }, [sprints, taskEditForm?.sprintId, taskEditForm?.projectId]);
+
+  const selectBoxDropDownOptions = useMemo(
+    () => ({
+      wrapperAttr: { class: "modal-selectbox-overlay" },
+    }),
+    []
+  );
+  const dateBoxDropDownOptions = selectBoxDropDownOptions;
 
   const memberInfoById = useMemo(() => {
     const map = new Map<string, { name: string; role: string }>();
@@ -254,6 +409,14 @@ export function TaskDetailsPage() {
     const canAssignTask = hasPermission(AppPermissions.TasksAssign, "Project", resolvedProjectId);
     return canUpdateTask && (canAssignTask || Boolean(userPermissions?.isSuperAdmin));
   }, [hasPermission, resolvedProjectId, task, userPermissions?.isSuperAdmin]);
+
+  const taskEditValidationError = useMemo(() => {
+    if (taskEditMode !== "edit" || !taskEditForm) {
+      return null;
+    }
+
+    return validateTaskEditForm(taskEditForm);
+  }, [taskEditForm, taskEditMode]);
 
   const toMemberLabel = (member: ScopeMember): string =>
     `${member.firstName} ${member.lastName}`.trim() + ` (${member.role})`;
@@ -549,6 +712,106 @@ export function TaskDetailsPage() {
   }, [task?.id, task?.assigneeId]);
 
   useEffect(() => {
+    if (!task) {
+      setTaskEditMode("view");
+      setTaskEditForm(null);
+      return;
+    }
+
+    setTaskEditMode("view");
+    setTaskEditForm(null);
+  }, [task?.id]);
+
+  const startEditingTask = () => {
+    if (!task || !canUpdateTask || taskActionLoading) {
+      return;
+    }
+
+    setTaskError("");
+    setTaskEditForm(toTaskEditForm(task));
+    setTaskEditMode("edit");
+  };
+
+  const cancelEditingTask = () => {
+    setTaskEditMode("view");
+    setTaskEditForm(null);
+    setTaskError("");
+  };
+
+  const handleSaveTask = async () => {
+    if (!task || !taskEditForm) {
+      return;
+    }
+
+    if (!canUpdateTask) {
+      setTaskError("You do not have permission to update this task.");
+      return;
+    }
+
+    const validation = validateTaskEditForm(taskEditForm);
+    if (validation) {
+      setTaskError(validation);
+      return;
+    }
+
+    setTaskActionLoading(true);
+    setTaskError("");
+
+    try {
+      const updatedTask = await updateTask(task.id, task.projectId, {
+        epicId: taskEditForm.epicId.trim() || null,
+        sprintId: taskEditForm.sprintId.trim() || null,
+        assigneeId: taskEditForm.assigneeId.trim() || null,
+        title: taskEditForm.title.trim(),
+        description: taskEditForm.description.trim() || undefined,
+        status: taskEditForm.status,
+        priority: taskEditForm.priority,
+        startDate: taskEditForm.startDate || null,
+        endDate: taskEditForm.endDate || null,
+      });
+
+      const refreshedTask = await getTaskById(task.id, task.projectId);
+      const taskForView = refreshedTask ?? updatedTask;
+      setTask(taskForView);
+      setSelectedAssigneeId(taskForView.assigneeId ?? "");
+      setTaskEditMode("view");
+      setTaskEditForm(null);
+    } catch (error) {
+      setTaskError(getErrorMessage(error, "Failed to update task."));
+    } finally {
+      setTaskActionLoading(false);
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!task) {
+      return;
+    }
+
+    if (!canDeleteTask) {
+      setTaskError("You do not have permission to delete this task.");
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete task "${task.title || `#${task.id}`}"?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setTaskActionLoading(true);
+    setTaskError("");
+
+    try {
+      await deleteTask(task.id, task.projectId);
+      navigate(`/tasks${resolvedProjectId ? `?projectId=${resolvedProjectId}` : ""}`);
+    } catch (error) {
+      setTaskError(getErrorMessage(error, "Failed to delete task."));
+    } finally {
+      setTaskActionLoading(false);
+    }
+  };
+
+  useEffect(() => {
     if (!resolvedProjectId || !parsedTaskId) {
       setTask(null);
       return;
@@ -607,6 +870,100 @@ export function TaskDetailsPage() {
   useEffect(() => {
     void reloadComments();
   }, [reloadComments]);
+
+  // ── Attachment helpers ──
+  const loadAttachments = useCallback(async () => {
+    if (!parsedTaskId) return;
+    setAttachmentsLoading(true);
+    try {
+      const result = await getAttachments(parsedTaskId);
+      setAttachments(result);
+    } catch {
+      setAttachments([]);
+    } finally {
+      setAttachmentsLoading(false);
+    }
+  }, [parsedTaskId]);
+
+  const clearSelectedAttachmentFiles = useCallback(() => {
+    setSelectedAttachmentFiles([]);
+    setAttachmentPreviewOpen(false);
+    if (attachmentFileInputRef.current) {
+      attachmentFileInputRef.current.value = "";
+    }
+  }, []);
+
+  const handleAttachmentFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = event.target.files;
+    if (!fileList || fileList.length === 0) {
+      return;
+    }
+
+    const newFiles = Array.from(fileList);
+    const nextFiles = [...selectedAttachmentFiles, ...newFiles];
+
+    setSelectedAttachmentFiles(nextFiles);
+    setAttachmentError(validateFiles(nextFiles, attachments.length).errors.join(" "));
+    setAttachmentPreviewOpen(true);
+
+    event.target.value = "";
+  };
+
+  const handleAttachmentPickerClick = () => {
+    if (attachmentUploadLoading) {
+      return;
+    }
+
+    if (selectedAttachmentFiles.length === 0) {
+      attachmentFileInputRef.current?.click();
+      return;
+    }
+
+    setAttachmentPreviewOpen((prev) => !prev);
+  };
+
+  const handleAttachmentUpload = async (files: File[] | FileList | null) => {
+    if (!files || files.length === 0 || !parsedTaskId) return;
+    const fileArr = Array.isArray(files) ? files : Array.from(files);
+    const { valid, errors } = validateFiles(fileArr, attachments.length);
+    if (errors.length > 0) {
+      setAttachmentError(errors.join(" "));
+      return;
+    }
+    setAttachmentUploadLoading(true);
+    setAttachmentError("");
+    try {
+      const results = await Promise.allSettled(
+        valid.map((file) => uploadAttachment(parsedTaskId, file))
+      );
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length > 0) {
+        setAttachmentError(`${failed.length} file(s) failed to upload.`);
+      }
+      await loadAttachments();
+      clearSelectedAttachmentFiles();
+    } catch (error) {
+      setAttachmentError(getErrorMessage(error, "Failed to upload attachments."));
+    } finally {
+      setAttachmentUploadLoading(false);
+      if (attachmentFileInputRef.current) attachmentFileInputRef.current.value = "";
+    }
+  };
+
+  const handleAttachmentDelete = async (attachmentId: string) => {
+    if (!parsedTaskId || !window.confirm("Delete this attachment?")) return;
+    setAttachmentError("");
+    try {
+      await deleteAttachment(attachmentId, parsedTaskId);
+      setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+    } catch (error) {
+      setAttachmentError(getErrorMessage(error, "Failed to delete attachment."));
+    }
+  };
+
+  useEffect(() => {
+    void loadAttachments();
+  }, [loadAttachments]);
 
   useEffect(() => {
     if (!resolvedProjectId || !parsedTaskId) {
@@ -873,7 +1230,7 @@ export function TaskDetailsPage() {
               }}
               role="listbox"
             >
-              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+              <ul className="mention-list">
                 {filteredMentionableUsers.map((mention) => (
                   <li
                     key={mention.id}
@@ -901,19 +1258,82 @@ export function TaskDetailsPage() {
 
   return (
     <div className="page-stack">
-      <section>
-        <Link to="/tasks">Back to Tasks</Link>
-        <h1>
-          {task?.taskCode && <span className="task-code-badge">{task.taskCode}</span>}
-          {" "}
-          {task?.title || `Task #${parsedTaskId}`}
-          {task && isTaskExpired(task) && <span className="badge badge-expired" style={{ marginLeft: 12, verticalAlign: "middle" }}>Expired</span>}
-        </h1>
+      <section className="task-header-section">
+        <div className="task-header-row">
+          <div className="task-header-copy">
+            <Link to="/tasks">Back to Tasks</Link>
+            <h1>
+              {task?.taskCode && <span className="task-code-badge">{task.taskCode}</span>}
+              {" "}
+              {task?.title || `Task #${parsedTaskId}`}
+              {task && isTaskExpired(task) && <span className="badge badge-expired task-expired-badge">Expired</span>}
+            </h1>
+          </div>
+
+          {task && (
+            <div className="task-header-actions">
+              {taskEditMode === "edit" ? (
+                <>
+                  <Button
+                    text="Cancel"
+                    stylingMode="outlined"
+                    onClick={cancelEditingTask}
+                    disabled={taskActionLoading}
+                  />
+                  <Button
+                    text={taskActionLoading ? "Saving..." : "Save"}
+                    type="default"
+                    onClick={() => void handleSaveTask()}
+                    disabled={taskActionLoading || !canUpdateTask || Boolean(taskEditValidationError)}
+                  />
+                </>
+              ) : (
+                <>
+                  {canUpdateTask && (
+                    <Button
+                      text="Edit"
+                      icon="edit"
+                      stylingMode="outlined"
+                      onClick={startEditingTask}
+                      disabled={taskActionLoading}
+                    />
+                  )}
+                  {canDeleteTask && (
+                    <Button
+                      text={taskActionLoading ? "Deleting..." : "Delete"}
+                      icon="trash"
+                      type="danger"
+                      stylingMode="text"
+                      onClick={() => void handleDeleteTask()}
+                      disabled={taskActionLoading}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {task && (
+          <div className="task-header-meta">
+            <div className="task-header-chip">
+              <span className="task-header-label">Project</span>
+              <span className="task-header-value">{projectNameById.get(task.projectId) ?? task.projectId}</span>
+            </div>
+            <div className="task-header-chip">
+              <span className="task-header-label">Sprint</span>
+              <span className="task-header-value">{task.sprintId ? sprintNameById.get(task.sprintId) ?? "-" : "-"}</span>
+            </div>
+          </div>
+        )}
         <p className="page-subtitle">Task details and collaboration thread</p>
       </section>
 
       {loadingTask && <div className="page-inline-info">Loading task details...</div>}
       {taskError && <div className="form-error">{taskError}</div>}
+      {taskEditMode === "edit" && taskEditValidationError && (
+        <div className="form-error">{taskEditValidationError}</div>
+      )}
 
       {task ? (
         <section className="card">
@@ -921,16 +1341,41 @@ export function TaskDetailsPage() {
             <div className="task-popup-main">
               <label>
                 Title
-                <TextBox value={task.title ?? "Untitled"} readOnly />
+                {taskEditMode === "edit" && taskEditForm ? (
+                  <TextBox
+                    value={taskEditForm.title}
+                    maxLength={100}
+                    onValueChanged={(event) =>
+                      setTaskEditForm((prev) =>
+                        prev ? { ...prev, title: String(event.value ?? "") } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox value={task.title ?? "Untitled"} readOnly />
+                )}
               </label>
 
               <label>
                 Description
-                <TextArea
-                  value={task.description ?? "No description provided."}
-                  minHeight={110}
-                  readOnly
-                />
+                {taskEditMode === "edit" && taskEditForm ? (
+                  <TextArea
+                    value={taskEditForm.description}
+                    maxLength={500}
+                    minHeight={110}
+                    onValueChanged={(event) =>
+                      setTaskEditForm((prev) =>
+                        prev ? { ...prev, description: String(event.value ?? "") } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextArea
+                    value={task.description ?? "No description provided."}
+                    minHeight={110}
+                    readOnly
+                  />
+                )}
               </label>
             </div>
 
@@ -942,78 +1387,178 @@ export function TaskDetailsPage() {
 
               <label>
                 Assignee
-                <TextBox value={assigneeDisplay} readOnly />
-                {canReassignTask && (
-                  <div className="page-stack" style={{ marginTop: "0.55rem", gap: "0.45rem" }}>
+                {taskEditMode === "edit" && taskEditForm ? (
+                  canReassignTask ? (
                     <SelectBox
                       dataSource={assignableOptions}
                       displayExpr="label"
                       valueExpr="id"
-                      value={selectedAssigneeId || null}
+                      value={taskEditForm.assigneeId || null}
                       showClearButton
-                      placeholder="Reassign task (optional)"
-                      onValueChanged={(event) => {
-                        setSelectedAssigneeId(String(event.value ?? ""));
-                        setReassignError("");
-                        setReassignSuccess("");
-                      }}
+                      placeholder="Select assignee (optional)"
+                      onValueChanged={(event) =>
+                        setTaskEditForm((prev) =>
+                          prev ? { ...prev, assigneeId: String(event.value ?? "") } : prev
+                        )
+                      }
                     />
-                    <div className="inline-actions" style={{ justifyContent: "flex-end" }}>
-                      <Button
-                        text={reassignLoading ? "Saving..." : "Save Assignee"}
-                        type="default"
-                        onClick={() => void handleReassignTask()}
-                        disabled={reassignLoading}
-                      />
-                    </div>
-                    {reassignError && <div className="form-error">{reassignError}</div>}
-                    {reassignSuccess && <div className="page-inline-info">{reassignSuccess}</div>}
-                  </div>
+                  ) : (
+                    <TextBox value={assigneeDisplay} readOnly />
+                  )
+                ) : (
+                  <>
+                    <TextBox value={assigneeDisplay} readOnly />
+                    {canReassignTask && (
+                      <div className="page-stack task-assignee-reassign-stack">
+                        <SelectBox
+                          dataSource={assignableOptions}
+                          displayExpr="label"
+                          valueExpr="id"
+                          value={selectedAssigneeId || null}
+                          showClearButton
+                          placeholder="Reassign task (optional)"
+                          onValueChanged={(event) => {
+                            setSelectedAssigneeId(String(event.value ?? ""));
+                            setReassignError("");
+                            setReassignSuccess("");
+                          }}
+                        />
+                        <div className="inline-actions task-assignee-reassign-actions">
+                          <Button
+                            text={reassignLoading ? "Saving..." : "Save Assignee"}
+                            type="default"
+                            onClick={() => void handleReassignTask()}
+                            disabled={reassignLoading}
+                          />
+                        </div>
+                        {reassignError && <div className="form-error">{reassignError}</div>}
+                        {reassignSuccess && <div className="page-inline-info">{reassignSuccess}</div>}
+                      </div>
+                    )}
+                  </>
                 )}
               </label>
 
               <label>
-                Project
-                <TextBox
-                  value={projectNameById.get(task.projectId) ?? task.projectId}
-                  readOnly
-                />
-              </label>
-
-              <label>
                 Epic
-                <TextBox
-                  value={task.epicId ? epicNameById.get(task.epicId) ?? "-" : "-"}
-                  readOnly
-                />
+                {taskEditMode === "edit" && taskEditForm ? (
+                  <SelectBox
+                    dataSource={editEpicsForSelect}
+                    displayExpr="title"
+                    valueExpr="id"
+                    value={taskEditForm.epicId || null}
+                    dropDownOptions={selectBoxDropDownOptions}
+                    onValueChanged={(event) =>
+                      setTaskEditForm((prev) =>
+                        prev ? { ...prev, epicId: String(event.value ?? "") } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox
+                    value={task.epicId ? epicNameById.get(task.epicId) ?? "-" : "-"}
+                    readOnly
+                  />
+                )}
               </label>
 
               <label>
                 Sprint
-                <TextBox
-                  value={task.sprintId ? sprintNameById.get(task.sprintId) ?? "-" : "-"}
-                  readOnly
-                />
+                {taskEditMode === "edit" && taskEditForm ? (
+                  <SelectBox
+                    dataSource={editSprintsForSelect}
+                    displayExpr="name"
+                    valueExpr="id"
+                    value={taskEditForm.sprintId || null}
+                    dropDownOptions={selectBoxDropDownOptions}
+                    onValueChanged={(event) =>
+                      setTaskEditForm((prev) =>
+                        prev ? { ...prev, sprintId: String(event.value ?? "") } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox
+                    value={task.sprintId ? sprintNameById.get(task.sprintId) ?? "-" : "-"}
+                    readOnly
+                  />
+                )}
               </label>
 
               <label>
                 Status
-                <TextBox value={statusLabel(task.status)} readOnly />
+                {taskEditMode === "edit" && taskEditForm ? (
+                  <SelectBox
+                    dataSource={statusOptions}
+                    displayExpr="label"
+                    valueExpr="id"
+                    value={taskEditForm.status}
+                    dropDownOptions={selectBoxDropDownOptions}
+                    onValueChanged={(event) =>
+                      setTaskEditForm((prev) =>
+                        prev ? { ...prev, status: (event.value as TaskDto["status"]) ?? prev.status } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox value={statusLabel(task.status)} readOnly />
+                )}
               </label>
 
               <label>
                 Priority
-                <TextBox value={priorityLabel(task.priority)} readOnly />
+                {taskEditMode === "edit" && taskEditForm ? (
+                  <SelectBox
+                    dataSource={priorityOptions}
+                    displayExpr="label"
+                    valueExpr="id"
+                    value={taskEditForm.priority}
+                    dropDownOptions={selectBoxDropDownOptions}
+                    onValueChanged={(event) =>
+                      setTaskEditForm((prev) =>
+                        prev ? { ...prev, priority: (event.value as TaskDto["priority"]) ?? prev.priority } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox value={priorityLabel(task.priority)} readOnly />
+                )}
               </label>
 
               <label>
                 Start Date
-                <TextBox value={toDisplayDate(task.startDate)} readOnly />
+                {taskEditMode === "edit" && taskEditForm ? (
+                  <DateBox
+                    type="date"
+                    value={taskEditForm.startDate || null}
+                    dropDownOptions={dateBoxDropDownOptions}
+                    onValueChanged={(event) =>
+                      setTaskEditForm((prev) =>
+                        prev ? { ...prev, startDate: toDateOnly(event.value) } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox value={toDisplayDate(task.startDate)} readOnly />
+                )}
               </label>
 
               <label>
                 End Date
-                <TextBox value={toDisplayDate(task.endDate)} readOnly />
+                {taskEditMode === "edit" && taskEditForm ? (
+                  <DateBox
+                    type="date"
+                    value={taskEditForm.endDate || null}
+                    dropDownOptions={dateBoxDropDownOptions}
+                    onValueChanged={(event) =>
+                      setTaskEditForm((prev) =>
+                        prev ? { ...prev, endDate: toDateOnly(event.value) } : prev
+                      )
+                    }
+                  />
+                ) : (
+                  <TextBox value={toDisplayDate(task.endDate)} readOnly />
+                )}
               </label>
 
               <label>
@@ -1033,6 +1578,134 @@ export function TaskDetailsPage() {
               </label>
             </div>
           </div>
+
+          <section className="task-attachments-section task-attachments-section--spaced">
+            <div className="task-comments-header">
+              <h3>Attachments</h3>
+              <span>{attachments.length}/{MAX_ATTACHMENTS_PER_TASK}</span>
+            </div>
+
+            {attachmentError && <div className="form-error">{attachmentError}</div>}
+            {attachmentsLoading && <div className="page-inline-info">Loading attachments...</div>}
+
+            {!attachmentsLoading && attachments.length === 0 && (
+              <div className="page-inline-info">No attachments.</div>
+            )}
+
+            {attachments.length > 0 && (
+              <div className="attachment-list">
+                {attachments.map((att) => (
+                  <div key={att.id} className="attachment-item">
+                    <span className="attachment-file">
+                      <a
+                        href={getAttachmentDownloadUrl(task.id, att.id)}
+                        className="attachment-file-link"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          void downloadAttachment(task.id, att.id, att.fileName);
+                        }}
+                      >
+                        {att.fileName}
+                      </a>
+                    </span>
+                    <span className="attachment-meta">
+                      {formatFileSize(att.fileSizeBytes)} · {new Date(att.createdAt).toLocaleDateString()}
+                    </span>
+                    {canUpdateTask && (
+                      <Button
+                        icon="trash"
+                        stylingMode="text"
+                        hint="Delete attachment"
+                        onClick={() => void handleAttachmentDelete(att.id)}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {canUpdateTask && attachments.length < MAX_ATTACHMENTS_PER_TASK && (
+              <div className="attachment-upload-section">
+                <div className="attachment-upload-toolbar">
+                  <Button
+                    text={selectedAttachmentFiles.length > 0 ? `Selected files (${selectedAttachmentFiles.length})` : "Attach files"}
+                    icon="attach"
+                    stylingMode="outlined"
+                    onClick={handleAttachmentPickerClick}
+                    disabled={attachmentUploadLoading}
+                  />
+                  <Button
+                    text={attachmentUploadLoading ? "Uploading..." : "Upload"}
+                    type="default"
+                    onClick={() => void handleAttachmentUpload(selectedAttachmentFiles)}
+                    disabled={
+                      attachmentUploadLoading ||
+                      selectedAttachmentFiles.length === 0 ||
+                      validateFiles(selectedAttachmentFiles, attachments.length).errors.length > 0
+                    }
+                  />
+                </div>
+
+                {attachmentPreviewOpen && selectedAttachmentFiles.length > 0 && (
+                  <div className="attachment-preview-dropdown">
+                    <div className="attachment-preview-header">
+                      <strong>Selected files</strong>
+                      <span className="attachment-upload-note">Ready to upload</span>
+                    </div>
+
+                    <div className="attachment-list">
+                      {selectedAttachmentFiles.map((file, index) => (
+                        <div key={`${file.name}-${file.size}-${index}`} className="attachment-item attachment-item--pending">
+                          <span className="attachment-file">
+                            <span className="attachment-file-name">{file.name}</span>
+                            <span className="attachment-meta">{formatFileSize(file.size)}</span>
+                          </span>
+                          <Button
+                            icon="close"
+                            stylingMode="text"
+                            hint="Remove selected file"
+                            onClick={() => {
+                              setSelectedAttachmentFiles((prev) => {
+                                const nextFiles = prev.filter((_, itemIndex) => itemIndex !== index);
+                                setAttachmentError(validateFiles(nextFiles, attachments.length).errors.join(" "));
+                                setAttachmentPreviewOpen(nextFiles.length > 0);
+                                return nextFiles;
+                              });
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="attachment-preview-actions">
+                      <Button
+                        text="Add more"
+                        stylingMode="outlined"
+                        onClick={() => attachmentFileInputRef.current?.click()}
+                        disabled={attachmentUploadLoading}
+                      />
+                      <Button
+                        text="Clear"
+                        stylingMode="text"
+                        onClick={clearSelectedAttachmentFiles}
+                        disabled={attachmentUploadLoading}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <input
+                  ref={attachmentFileInputRef}
+                  type="file"
+                  multiple
+                  accept={ALLOWED_EXTENSIONS_ACCEPT}
+                  className="attachment-file-input"
+                  onChange={handleAttachmentFileSelect}
+                  disabled={attachmentUploadLoading}
+                />
+              </div>
+            )}
+          </section>
 
           <section className="task-comments-section">
             <div className="task-comments-header">
