@@ -1568,3 +1568,87 @@ mark.mention-highlight.self {
   color: var(--primary);
   opacity: 0.85;
 }
+
+.sprint-board-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.sprint-board-title-row {
+  margin-bottom: 1rem;
+}
+
+.sprint-board-subtitle {
+  margin: 0;
+}
+
+.sprint-board-select-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.sprint-board-loading-text {
+  margin: 0;
+}
+
+.sprint-board-empty-info {
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.sprint-board-col-count {
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.sprint-board-empty-col {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+.sprint-board-card-title {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.sprint-board-card-priority {
+  font-size: 0.8rem;
+}
+
+.sprint-board-card-assignee {
+  font-size: 0.78rem;
+  margin-top: 0.2rem;
+  display: block;
+}
+
+.sprint-board-card-expired {
+  margin-top: 0.3rem;
+}
+
+.sprint-board-card-actions {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.kanban-card:hover .sprint-board-card-actions,
+.kanban-card:focus-within .sprint-board-card-actions {
+  opacity: 1;
+}
+
+.move-to-sprint-form {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 320px;
+  padding: 0.25rem 0;
+}

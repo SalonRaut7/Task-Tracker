@@ -9,6 +9,8 @@ import { AppPermissions } from "../security/permissions";
 import type { BackendProject } from "../types/app";
 import { EpicsSection } from "./project-details/EpicsSection";
 import { SprintsSection } from "./project-details/SprintsSection";
+import { BacklogSection } from "./project-details/BacklogSection";
+import { SprintBoardSection } from "./project-details/SprintBoardSection";
 
 export function ProjectDetailsPage() {
   const { id } = useParams();
@@ -23,6 +25,11 @@ export function ProjectDetailsPage() {
   const canCreateSprint = hasPermission(AppPermissions.SprintsCreate);
   const canUpdateSprint = hasPermission(AppPermissions.SprintsManage);
   const canDeleteSprint = hasPermission(AppPermissions.SprintsManage);
+
+  const canCreateTask = hasPermission(AppPermissions.TasksCreate);
+  const canUpdateTask = hasPermission(AppPermissions.TasksUpdate);
+  const canDeleteTask = hasPermission(AppPermissions.TasksDelete);
+  const canAssignTask = hasPermission(AppPermissions.TasksAssign);
 
   const [project, setProject] = useState<BackendProject | null>(null);
   const [loading, setLoading] = useState(false);
@@ -138,6 +145,21 @@ export function ProjectDetailsPage() {
         canUpdateSprint={canUpdateSprint}
         canDeleteSprint={canDeleteSprint}
       />
+      <SprintBoardSection
+        projectId={project.id}
+        canUpdateTask={canUpdateTask}
+        canDeleteTask={canDeleteTask}
+        canAssignTask={canAssignTask}
+      />
+
+      <BacklogSection
+        projectId={project.id}
+        canCreateTask={canCreateTask}
+        canUpdateTask={canUpdateTask}
+        canDeleteTask={canDeleteTask}
+        canAssignTask={canAssignTask}
+      />
+
     </div>
   );
 }
