@@ -82,14 +82,6 @@ function validateTaskEditForm(form: TaskEditForm): string | null {
     return "Description must be 500 characters or less.";
   }
 
-  if (!form.epicId.trim()) {
-    return "Epic is required.";
-  }
-
-  if (!form.sprintId.trim()) {
-    return "Sprint is required.";
-  }
-
   if (!form.startDate) {
     return "Start date is required.";
   }
@@ -1447,6 +1439,8 @@ export function TaskDetailsPage() {
                     displayExpr="title"
                     valueExpr="id"
                     value={taskEditForm.epicId || null}
+                    showClearButton={true}
+                    placeholder="Select epic (optional)"
                     dropDownOptions={selectBoxDropDownOptions}
                     onValueChanged={(event) =>
                       setTaskEditForm((prev) =>
@@ -1470,6 +1464,8 @@ export function TaskDetailsPage() {
                     displayExpr="name"
                     valueExpr="id"
                     value={taskEditForm.sprintId || null}
+                    showClearButton={true}
+                    placeholder="Select sprint (optional)"
                     dropDownOptions={selectBoxDropDownOptions}
                     onValueChanged={(event) =>
                       setTaskEditForm((prev) =>

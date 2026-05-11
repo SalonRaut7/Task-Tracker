@@ -14,12 +14,6 @@ namespace TaskTracker.Application.Features.Tasks.Commands.UpdateTask
             RuleFor(x => x.ProjectId)
                 .NotEmpty().WithMessage("ProjectId is required");
 
-            RuleFor(x => x.EpicId)
-                .NotEmpty().WithMessage("EpicId is required");
-
-            RuleFor(x => x.SprintId)
-                .NotEmpty().WithMessage("SprintId is required");
-
             RuleFor(x => x.AssigneeId)
                 .Must(value => value == null || value.Trim().Length > 0)
                 .WithMessage("AssigneeId cannot be whitespace");
