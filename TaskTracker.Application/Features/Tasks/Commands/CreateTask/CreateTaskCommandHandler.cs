@@ -13,17 +13,20 @@ namespace TaskTracker.Application.Features.Tasks.Commands.CreateTask;
 public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskDto>
 {
     private readonly ITaskRepository _taskRepository;
+    private readonly ISprintRepository _sprintRepository;
     private readonly IMembershipRepository _membershipRepository;
     private readonly ICurrentUserService _currentUser;
     private readonly IPermissionEvaluator _permissionEvaluator;
 
     public CreateTaskCommandHandler(
         ITaskRepository taskRepository,
+        ISprintRepository sprintRepository,
         IMembershipRepository membershipRepository,
         ICurrentUserService currentUser,
         IPermissionEvaluator permissionEvaluator)
     {
         _taskRepository = taskRepository;
+        _sprintRepository = sprintRepository;
         _membershipRepository = membershipRepository;
         _currentUser = currentUser;
         _permissionEvaluator = permissionEvaluator;
@@ -72,8 +75,24 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskD
                 cancellationToken);
 
             if (!sprintBelongsToProject)
-            {
                 throw new InvalidOperationException("Sprint does not belong to the selected project.");
+
+            // Guard: cannot add tasks to a closed sprint
+            var sprint = await _sprintRepository.GetByIdAsync(command.SprintId.Value, cancellationToken);
+            if (sprint is not null)
+            {
+                if (sprint.Status is SprintStatus.Completed or SprintStatus.Cancelled or SprintStatus.Archived)
+                    throw new InvalidOperationException(
+                        $"Cannot add tasks to a {sprint.Status} sprint.");
+
+                // Guard: task dates must fall within the sprint's date range
+                if (command.EndDate.HasValue && command.EndDate.Value > sprint.EndDate)
+                    throw new InvalidOperationException(
+                        $"Task end date ({command.EndDate}) exceeds the sprint end date ({sprint.EndDate}).");
+
+                if (command.StartDate.HasValue && command.StartDate.Value < sprint.StartDate)
+                    throw new InvalidOperationException(
+                        $"Task start date ({command.StartDate}) is before the sprint start date ({sprint.StartDate}).");
             }
         }
 

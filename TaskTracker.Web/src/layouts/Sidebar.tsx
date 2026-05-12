@@ -18,7 +18,7 @@ const navigation = [
     requiredPermission: AppPermissions.ProjectsView,
   },
   {
-    name: "Tasks",
+    name: "Tasks List",
     href: "/tasks",
     icon: "taskcomplete",
     requiredPermission: AppPermissions.TasksView,

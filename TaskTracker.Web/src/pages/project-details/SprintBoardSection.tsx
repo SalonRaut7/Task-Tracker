@@ -165,6 +165,13 @@ export function SprintBoardSection({
         setSprints(sprintResult);
         setEpics(epicResult);
         setMembers(memberResult.members);
+
+        // Auto-select the Active sprint (status === 1) so the board shows
+        // the current sprint by default instead of an empty dropdown.
+        const activeSprint = sprintResult.find((s) => s.status === 1);
+        if (activeSprint && !selectedSprintId) {
+          setSelectedSprintId(activeSprint.id);
+        }
       } catch (error) {
         setPageError(getErrorMessage(error, "Failed to load sprint board data."));
       } finally {
@@ -280,6 +287,14 @@ export function SprintBoardSection({
     setEditError("");
     setModalAttachments([]);
   };
+
+  // A past StartDate is immutable (backend enforces EnforcePastDateChangeRules).
+  // Disable the input so the user gets instant feedback rather than a server error.
+  const isStartDateInPast =
+    popupMode === "edit" &&
+    !!selectedTask?.startDate &&
+    new Date(`${selectedTask.startDate}T00:00:00`) <
+      new Date(new Date().toDateString());
 
   const handleUpdateTask = async () => {
     if (!selectedTask) return;
@@ -626,12 +641,23 @@ export function SprintBoardSection({
                 <DateBox
                   type="date"
                   value={editForm.startDate || null}
-                  readOnly={popupMode === "view"}
+                  readOnly={popupMode === "view" || isStartDateInPast}
+                  disabled={isStartDateInPast}
+                  hint={
+                    isStartDateInPast
+                      ? "Start date is in the past and cannot be modified."
+                      : undefined
+                  }
                   dropDownOptions={dropDownOptions}
                   onValueChanged={(e) =>
                     setEditForm((prev) => ({ ...prev, startDate: toDateOnly(e.value) }))
                   }
                 />
+                {isStartDateInPast && (
+                  <span style={{ fontSize: "0.75rem", color: "var(--color-warning, #f59e0b)", marginTop: "2px", display: "block" }}>
+                    Past start dates cannot be changed.
+                  </span>
+                )}
               </label>
 
               <label>

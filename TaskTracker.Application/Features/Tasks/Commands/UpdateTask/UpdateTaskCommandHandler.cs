@@ -13,18 +13,21 @@ namespace TaskTracker.Application.Features.Tasks.Commands.UpdateTask;
 
 public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskDto?>
 {
-    private readonly ITaskRepository      _taskRepository;
+    private readonly ITaskRepository _taskRepository;
+    private readonly ISprintRepository _sprintRepository;
     private readonly TaskDateRulesOptions _taskDateRules;
-    private readonly ICurrentUserService  _currentUser;
+    private readonly ICurrentUserService _currentUser;
     private readonly IPermissionEvaluator _permissionEvaluator;
 
     public UpdateTaskCommandHandler(
         ITaskRepository taskRepository,
+        ISprintRepository sprintRepository,
         IOptions<TaskDateRulesOptions> taskDateRules,
         ICurrentUserService currentUser,
         IPermissionEvaluator permissionEvaluator)
     {
         _taskRepository = taskRepository;
+        _sprintRepository = sprintRepository;
         _taskDateRules = taskDateRules.Value;
         _currentUser = currentUser;
         _permissionEvaluator = permissionEvaluator;
@@ -44,7 +47,6 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
             return null;
         }
 
-        // Capture old state for change detection
         var oldTitle = task.Title;
         var oldDescription = task.Description;
         var oldStatus = (int)task.Status;
@@ -76,8 +78,24 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
                 cancellationToken);
 
             if (!sprintBelongsToProject)
-            {
                 throw new InvalidOperationException("Sprint does not belong to the selected project.");
+
+            // Guard: cannot move task to a closed sprint
+            var sprint = await _sprintRepository.GetByIdAsync(command.SprintId.Value, cancellationToken);
+            if (sprint is not null)
+            {
+                if (sprint.Status is SprintStatus.Completed or SprintStatus.Cancelled or SprintStatus.Archived)
+                    throw new InvalidOperationException(
+                        $"Cannot assign tasks to a {sprint.Status} sprint.");
+
+                // Guard: task dates must fall within the sprint's date range
+                if (command.EndDate.HasValue && command.EndDate.Value > sprint.EndDate)
+                    throw new InvalidOperationException(
+                        $"Task end date ({command.EndDate}) exceeds the sprint end date ({sprint.EndDate}).");
+
+                if (command.StartDate.HasValue && command.StartDate.Value < sprint.StartDate)
+                    throw new InvalidOperationException(
+                        $"Task start date ({command.StartDate}) is before the sprint start date ({sprint.StartDate}).");
             }
         }
 
@@ -125,7 +143,7 @@ public class UpdateTaskCommandHandler : IRequestHandler<UpdateTaskCommand, TaskD
             command.StartDate,
             command.EndDate,
             command.EndDateExtensionDays,
-            _taskDateRules.EffectiveAllowedExtensionDays, // ← clean
+            _taskDateRules.EffectiveAllowedExtensionDays,
             DateTime.UtcNow);
 
         var changedFields = BuildChangedFields(command, oldTitle, oldDescription, oldStatus, oldPriority, oldEpicId, oldSprintId, oldStartDate, oldEndDate);

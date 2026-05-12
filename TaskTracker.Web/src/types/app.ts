@@ -120,6 +120,31 @@ export interface BackendSprint {
   status: number;
   createdAt?: string;
   updatedAt?: string;
+  archiveReason?: string;
+  archivedAtUTC?: string;
+  archivedByUserId?: string;
+}
+
+export enum SprintStatus {
+  Planning  = 0,
+  Active    = 1,
+  Completed = 2,
+  Cancelled = 3,
+  Archived  = 4,
+}
+
+export const sprintStatusLabel: Record<SprintStatus, string> = {
+  [SprintStatus.Planning]:  "Planning",
+  [SprintStatus.Active]:    "Active",
+  [SprintStatus.Completed]: "Completed",
+  [SprintStatus.Cancelled]: "Cancelled",
+  [SprintStatus.Archived]:  "Archived",
+};
+
+export interface CompleteSprintResult {
+  sprint: BackendSprint;
+  incompleteTaskCount: number;
+  rolledOverTaskCount: number;
 }
 
 export interface BackendComment {

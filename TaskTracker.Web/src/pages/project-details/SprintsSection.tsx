@@ -1,20 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "devextreme-react/button";
 import DataGrid, { Column, Paging } from "devextreme-react/data-grid";
 import DateBox from "devextreme-react/date-box";
+import DropDownButton from "devextreme-react/drop-down-button";
 import Popup from "devextreme-react/popup";
-import SelectBox from "devextreme-react/select-box";
 import TextArea from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
 import { Modal } from "../../components/Modal";
 import {
+  archiveSprint,
+  cancelSprint,
+  completeSprint,   
   createSprint,
   deleteSprint,
   getSprints,
+  startSprint,
   updateSprint,
 } from "../../services/sprintService";
-import type { BackendSprint } from "../../types/app";
+import { SprintStatus, sprintStatusLabel, type BackendSprint } from "../../types/app";
 import { getErrorMessage } from "../../utils/getErrorMessage";
+import { toDateOnly } from "../../utils/toDateOnly";
 
 type DetailPopupMode = "view" | "edit" | null;
 
@@ -23,24 +28,18 @@ type SprintForm = {
   goal: string;
   startDate: string;
   endDate: string;
-  status: number;
 };
-
-const sprintStatusOptions = [
-  { id: 0, label: "Planning" },
-  { id: 1, label: "Active" },
-  { id: 2, label: "Completed" },
-];
 
 const emptySprintForm: SprintForm = {
   name: "",
   goal: "",
   startDate: "",
   endDate: "",
-  status: 0,
 };
 
-import { toDateOnly } from "../../utils/toDateOnly";
+const dropDownOptions = {
+  wrapperAttr: { class: "modal-selectbox-overlay" },
+};
 
 type SprintsSectionProps = {
   projectId: string;
@@ -58,8 +57,10 @@ export function SprintsSection({
   const [sprints, setSprints] = useState<BackendSprint[]>([]);
   const [loading, setLoading] = useState(false);
   const [pageError, setPageError] = useState("");
+  const [pageSuccess, setPageSuccess] = useState("");
   const [createError, setCreateError] = useState("");
   const [editError, setEditError] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
 
   const [showCreatePopup, setShowCreatePopup] = useState(false);
   const [createForm, setCreateForm] = useState<SprintForm>(emptySprintForm);
@@ -96,6 +97,19 @@ export function SprintsSection({
     void loadSprints();
   }, [projectId]);
 
+  const statusLabel = (status: number): string =>
+    sprintStatusLabel[status as SprintStatus] ?? String(status);
+
+  const updateSprintInList = (updated: BackendSprint) =>
+    setSprints((prev) =>
+      prev.map((s) => (s.id === updated.id ? updated : s))
+    );
+
+  const clearMessages = () => {
+    setPageError("");
+    setPageSuccess("");
+  };
+
   const openSprintDetails = (sprint: BackendSprint, mode: DetailPopupMode) => {
     setSelectedSprint(sprint);
     setPopupMode(mode);
@@ -104,7 +118,6 @@ export function SprintsSection({
       goal: sprint.goal ?? "",
       startDate: toDateOnly(sprint.startDate),
       endDate: toDateOnly(sprint.endDate),
-      status: sprint.status,
     });
     setEditError("");
   };
@@ -132,8 +145,8 @@ export function SprintsSection({
       return;
     }
 
-    if (createForm.startDate > createForm.endDate) {
-      setCreateError("Sprint end date must be on or after start date.");
+    if (createForm.startDate >= createForm.endDate) {
+      setCreateError("End date must be after start date (minimum 1 day duration).");
       return;
     }
 
@@ -146,7 +159,6 @@ export function SprintsSection({
         goal: createForm.goal.trim() || undefined,
         startDate: createForm.startDate,
         endDate: createForm.endDate,
-        status: createForm.status,
       });
 
       setSprints((prev) => [created, ...prev]);
@@ -158,9 +170,7 @@ export function SprintsSection({
   };
 
   const handleUpdateSprint = async () => {
-    if (!selectedSprint) {
-      return;
-    }
+    if (!selectedSprint) return;
 
     if (!canUpdateSprint) {
       setEditError("You do not have permission to update sprints.");
@@ -177,8 +187,8 @@ export function SprintsSection({
       return;
     }
 
-    if (editForm.startDate > editForm.endDate) {
-      setEditError("Sprint start date cannot be after end date.");
+    if (editForm.startDate >= editForm.endDate) {
+      setEditError("End date must be after start date (minimum 1 day duration).");
       return;
     }
 
@@ -190,14 +200,9 @@ export function SprintsSection({
         goal: editForm.goal.trim() || undefined,
         startDate: editForm.startDate,
         endDate: editForm.endDate,
-        status: editForm.status,
       });
 
-      setSprints((prev) =>
-        prev.map((sprint) => (sprint.id === updated.id ? updated : sprint))
-      );
-
-      // Return to Project Details list view immediately after save.
+      updateSprintInList(updated);
       closeSprintDetails();
     } catch (error) {
       setEditError(getErrorMessage(error, "Failed to update sprint."));
@@ -211,11 +216,9 @@ export function SprintsSection({
     }
 
     const confirmed = window.confirm(`Delete sprint "${sprint.name}"?`);
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
-    setPageError("");
+    clearMessages();
 
     try {
       await deleteSprint(sprint.id);
@@ -227,6 +230,172 @@ export function SprintsSection({
     } catch (error) {
       setPageError(getErrorMessage(error, "Failed to delete sprint."));
     }
+  };
+
+  const handleStartSprint = async (sprint: BackendSprint) => {
+    clearMessages();
+    setActionLoading(true);
+    try {
+      const updated = await startSprint(sprint.id);
+      updateSprintInList(updated);
+      setPageSuccess(`Sprint "${updated.name}" is now Active.`);
+      if (selectedSprint?.id === sprint.id)
+        setSelectedSprint(updated);
+    } catch (error) {
+      setPageError(getErrorMessage(error, "Failed to start sprint."));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCompleteSprint = async (sprint: BackendSprint) => {
+    clearMessages();
+    const confirmed = window.confirm(
+      `Complete sprint "${sprint.name}"?\n\nIncomplete tasks will be moved back to the backlog.`
+    );
+    if (!confirmed) return;
+
+    setActionLoading(true);
+    try {
+      const result = await completeSprint(sprint.id);
+      updateSprintInList(result.sprint);
+      const msg = result.rolledOverTaskCount > 0
+        ? `Sprint "${result.sprint.name}" completed. ${result.rolledOverTaskCount} incomplete task(s) moved to backlog.`
+        : `Sprint "${result.sprint.name}" completed. All tasks were finished!`;
+      setPageSuccess(msg);
+      if (selectedSprint?.id === sprint.id)
+        setSelectedSprint(result.sprint);
+    } catch (error) {
+      setPageError(getErrorMessage(error, "Failed to complete sprint."));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancelSprint = async (sprint: BackendSprint) => {
+    clearMessages();
+    const confirmed = window.confirm(
+      `Cancel sprint "${sprint.name}"?\n\nAll tasks will be moved back to the backlog.`
+    );
+    if (!confirmed) return;
+
+    setActionLoading(true);
+    try {
+      const updated = await cancelSprint(sprint.id);
+      updateSprintInList(updated);
+      setPageSuccess(`Sprint "${updated.name}" has been cancelled.`);
+      if (selectedSprint?.id === sprint.id)
+        setSelectedSprint(updated);
+    } catch (error) {
+      setPageError(getErrorMessage(error, "Failed to cancel sprint."));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleArchiveSprint = async (sprint: BackendSprint) => {
+    clearMessages();
+    const promptValue = window.prompt(`Archive reason for sprint "${sprint.name}":`);
+    if (promptValue === null) return;
+    
+    const reason = promptValue.trim();
+    if (!reason) {
+      setPageError("Archive reason is required.");
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const updated = await archiveSprint(sprint.id, reason);
+      updateSprintInList(updated);
+      setPageSuccess(`Sprint "${updated.name}" has been archived.`);
+      if (selectedSprint?.id === sprint.id)
+        setSelectedSprint(updated);
+    } catch (error) {
+      setPageError(getErrorMessage(error, "Failed to archive sprint."));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const renderLifecycleActions = (sprint: BackendSprint) => {
+    const status = sprint.status as SprintStatus;
+    const btns: React.ReactElement[] = [];
+
+    if (status === SprintStatus.Planning) {
+      btns.push(
+        <Button
+          key="start"
+          text="Start Sprint"
+          type="success"
+          stylingMode="outlined"
+          disabled={actionLoading || !canUpdateSprint}
+          onClick={(e) => {
+            e?.event?.stopPropagation?.();
+            void handleStartSprint(sprint);
+          }}
+        />
+      );
+      btns.push(
+        <Button
+          key="cancel"
+          text="Cancel"
+          type="danger"
+          stylingMode="text"
+          disabled={actionLoading || !canUpdateSprint}
+          onClick={(e) => {
+            e?.event?.stopPropagation?.();
+            void handleCancelSprint(sprint);
+          }}
+        />
+      );
+    }
+
+    if (status === SprintStatus.Active) {
+      btns.push(
+        <Button
+          key="complete"
+          text="Complete"
+          type="success"
+          stylingMode="outlined"
+          disabled={actionLoading || !canUpdateSprint}
+          onClick={(e) => {
+            e?.event?.stopPropagation?.();
+            void handleCompleteSprint(sprint);
+          }}
+        />
+      );
+      btns.push(
+        <Button
+          key="cancel"
+          text="Cancel"
+          type="danger"
+          stylingMode="text"
+          disabled={actionLoading || !canUpdateSprint}
+          onClick={(e) => {
+            e?.event?.stopPropagation?.();
+            void handleCancelSprint(sprint);
+          }}
+        />
+      );
+    }
+
+    if (status === SprintStatus.Completed || status === SprintStatus.Cancelled) {
+      btns.push(
+        <Button
+          key="archive"
+          text="Archive"
+          stylingMode="outlined"
+          disabled={actionLoading || !canUpdateSprint}
+          onClick={(e) => {
+            e?.event?.stopPropagation?.();
+            void handleArchiveSprint(sprint);
+          }}
+        />
+      );
+    }
+
+    return btns;
   };
 
   return (
@@ -245,6 +414,7 @@ export function SprintsSection({
       </div>
 
       {pageError && <div className="form-error">{pageError}</div>}
+      {pageSuccess && <div className="form-success">{pageSuccess}</div>}
       {loading && <div className="page-inline-info">Refreshing sprints...</div>}
 
       <DataGrid
@@ -269,43 +439,80 @@ export function SprintsSection({
           caption="Status"
           width={130}
           cellRender={({ data }: { data: BackendSprint }) =>
-            sprintStatusOptions.find((option) => option.id === data.status)
-              ?.label ?? String(data.status)
+            statusLabel(data.status)
           }
         />
         <Column
           caption="Actions"
-          width={180}
-          cellRender={({ data }: { data: BackendSprint }) => (
-            <div
-              className="inline-actions"
-              onClick={(event) => event.stopPropagation()}
-              onMouseDown={(event) => event.stopPropagation()}
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <Button
-                text="Edit"
-                stylingMode="text"
-                disabled={!canUpdateSprint}
-                onClick={(event) => {
-                  event?.event?.preventDefault?.();
-                  event?.event?.stopPropagation?.();
-                  openSprintDetails(data, "edit");
-                }}
-              />
-              <Button
-                text="Delete"
-                type="danger"
-                stylingMode="text"
-                disabled={!canDeleteSprint}
-                onClick={(event) => {
-                  event?.event?.preventDefault?.();
-                  event?.event?.stopPropagation?.();
-                  void handleDeleteSprint(data);
-                }}
-              />
-            </div>
-          )}
+          width={320}
+          cellRender={({ data }: { data: BackendSprint }) => {
+            const isEditAllowed = canUpdateSprint && ![SprintStatus.Completed, SprintStatus.Cancelled, SprintStatus.Archived].includes(data.status);
+            const isDeleteAllowed = canDeleteSprint && [SprintStatus.Planning, SprintStatus.Cancelled].includes(data.status);
+
+            const dropdownItems = [];
+            
+            if (isEditAllowed) {
+              dropdownItems.push({
+                id: "edit",
+                text: "Edit...",
+                icon: "edit",
+              });
+            }
+            
+            if (isDeleteAllowed) {
+              dropdownItems.push({
+                id: "delete",
+                text: "Delete",
+                icon: "trash",
+              });
+            }
+
+            return (
+              <div
+                className="inline-actions"
+                onClick={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <Button
+                  key="view"
+                  text="View"
+                  icon="eye"
+                  stylingMode="text"
+                  onClick={(e) => {
+                    e?.event?.stopPropagation?.();
+                    openSprintDetails(data, "view");
+                  }}
+                />
+                {renderLifecycleActions(data)}
+                
+                {dropdownItems.length > 0 && (
+                  <DropDownButton
+                    icon="overflow"
+                    showArrowIcon={false}
+                    items={dropdownItems}
+                    displayExpr="text"
+                    keyExpr="id"
+                    stylingMode="text"
+                    dropDownOptions={{ width: 140, container: "body" }}
+                    onButtonClick={(e) => {
+                      e.event?.preventDefault?.();
+                      e.event?.stopPropagation?.();
+                    }}
+                    onItemClick={(e) => {
+                      e.event?.preventDefault?.();
+                      e.event?.stopPropagation?.();
+                      if (e.itemData?.id === "edit") {
+                        openSprintDetails(data, "edit");
+                      } else if (e.itemData?.id === "delete") {
+                        void handleDeleteSprint(data);
+                      }
+                    }}
+                  />
+                )}
+              </div>
+            );
+          }}
         />
         <Paging enabled pageSize={8} />
       </DataGrid>
@@ -359,6 +566,7 @@ export function SprintsSection({
               <DateBox
                 type="date"
                 value={createForm.startDate || null}
+                dropDownOptions={dropDownOptions}
                 onValueChanged={(event) =>
                   setCreateForm((prev) => ({
                     ...prev,
@@ -373,6 +581,7 @@ export function SprintsSection({
               <DateBox
                 type="date"
                 value={createForm.endDate || null}
+                dropDownOptions={dropDownOptions}
                 onValueChanged={(event) =>
                   setCreateForm((prev) => ({
                     ...prev,
@@ -383,22 +592,9 @@ export function SprintsSection({
             </label>
           </div>
 
-          <label>
-            Status
-            <SelectBox
-              dataSource={sprintStatusOptions}
-              displayExpr="label"
-              valueExpr="id"
-              value={createForm.status}
-              onValueChanged={(event) =>
-                setCreateForm((prev) => ({
-                  ...prev,
-                  status:
-                    typeof event.value === "number" ? event.value : prev.status,
-                }))
-              }
-            />
-          </label>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", margin: 0 }}>
+            New sprints always start in <strong>Planning</strong> status. Use lifecycle actions to start, complete, cancel, or archive.
+          </p>
 
           <div className="popup-actions">
             <Button
@@ -434,6 +630,10 @@ export function SprintsSection({
         {selectedSprint && (
           <div className="popup-form">
             {popupMode === "edit" && editError && <div className="form-error">{editError}</div>}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>Status:</span>
+              <span className="role-chip">{statusLabel(selectedSprint.status)}</span>
+            </div>
 
             <label>
               Name
@@ -473,6 +673,7 @@ export function SprintsSection({
                   type="date"
                   value={editForm.startDate || null}
                   readOnly={popupMode === "view"}
+                  dropDownOptions={dropDownOptions}
                   onValueChanged={(event) =>
                     setEditForm((prev) => ({
                       ...prev,
@@ -488,6 +689,7 @@ export function SprintsSection({
                   type="date"
                   value={editForm.endDate || null}
                   readOnly={popupMode === "view"}
+                  dropDownOptions={dropDownOptions}
                   onValueChanged={(event) =>
                     setEditForm((prev) => ({
                       ...prev,
@@ -498,26 +700,11 @@ export function SprintsSection({
               </label>
             </div>
 
-            <label>
-              Status
-              <SelectBox
-                dataSource={sprintStatusOptions}
-                displayExpr="label"
-                valueExpr="id"
-                value={editForm.status}
-                readOnly={popupMode === "view"}
-                dropDownOptions={{
-                  wrapperAttr: { class: "modal-selectbox-overlay" },
-                }}
-                onValueChanged={(event) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    status:
-                      typeof event.value === "number" ? event.value : prev.status,
-                  }))
-                }
-              />
-            </label>
+            {popupMode === "view" && (
+              <div className="inline-actions" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+                {renderLifecycleActions(selectedSprint)}
+              </div>
+            )}
 
             <div className="popup-actions">
               {popupMode === "edit" ? (

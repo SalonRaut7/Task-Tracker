@@ -18,16 +18,24 @@ public sealed class UpdateSprintCommandHandler : IRequestHandler<UpdateSprintCom
     {
         var sprint = await _sprintRepository.GetByIdForUpdateAsync(request.Id, cancellationToken);
         if (sprint is null)
-        {
             return null;
-        }
 
-        sprint.Name = request.Name.Trim();
-        sprint.Goal = string.IsNullOrWhiteSpace(request.Goal) ? null : request.Goal.Trim();
-        sprint.StartDate = request.StartDate;
-        sprint.EndDate = request.EndDate;
-        sprint.Status = request.Status;
-        sprint.UpdatedAt = DateTime.UtcNow;
+        // Guard: no date overlap with other sprints in this project (excluding self)
+        var overlaps = await _sprintRepository.HasOverlappingSprintAsync(
+            sprint.ProjectId, request.StartDate, request.EndDate,
+            excludeSprintId: sprint.Id, cancellationToken: cancellationToken);
+
+        if (overlaps)
+            throw new InvalidOperationException(
+                "The updated date range overlaps with another sprint in this project.");
+
+        // Domain method enforces: no edits to closed sprints, StartDate locked when Active
+        sprint.ApplyUpdate(
+            request.Name,
+            request.Goal,
+            request.StartDate,
+            request.EndDate,
+            DateTime.UtcNow);
 
         await _sprintRepository.UpdateAsync(sprint, cancellationToken);
 

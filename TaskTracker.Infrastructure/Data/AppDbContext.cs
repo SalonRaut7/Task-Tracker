@@ -117,6 +117,26 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                     break;
             }
         }
+
+        foreach (var entry in ChangeTracker.Entries<Sprint>())
+        {
+            switch (entry.State)
+            {
+                case EntityState.Added:
+                    if (entry.Entity.CreatedAt == default)
+                        entry.Property(s => s.CreatedAt).CurrentValue = nowUtc;
+                    if (entry.Entity.UpdatedAt == default)
+                        entry.Property(s => s.UpdatedAt).CurrentValue = nowUtc;
+                    break;
+
+                case EntityState.Modified:
+                    entry.Property(s => s.CreatedAt).IsModified = false;
+                    entry.Property(s => s.UpdatedAt).IsModified = true;
+                    // Final consistency gate — mirrors TaskItem.EnsureDateConsistency()
+                    entry.Entity.EnsureDateConsistency();
+                    break;
+            }
+        }
     }
 
     private List<TaskChangedDomainEvent> CollectTaskDomainEvents()
