@@ -162,5 +162,20 @@ function normalizeSprint(raw: unknown): BackendSprint | null {
       : item.UpdatedAt
       ? String(item.UpdatedAt)
       : undefined,
+    archiveReason: item.archiveReason
+      ? String(item.archiveReason)
+      : item.ArchiveReason
+      ? String(item.ArchiveReason)
+      : undefined,
+    archivedAtUTC: item.archivedAtUTC
+      ? String(item.archivedAtUTC)
+      : item.ArchivedAtUTC
+      ? String(item.ArchivedAtUTC)
+      : undefined,
+    archivedByUserId: item.archivedByUserId
+      ? String(item.archivedByUserId)
+      : item.ArchivedByUserId
+      ? String(item.ArchivedByUserId)
+      : undefined,
   };
 }

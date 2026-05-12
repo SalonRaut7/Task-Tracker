@@ -295,8 +295,14 @@ export function SprintsSection({
 
   const handleArchiveSprint = async (sprint: BackendSprint) => {
     clearMessages();
-    const reason = window.prompt(`Archive reason for sprint "${sprint.name}":`);
-    if (!reason) return;
+    const promptValue = window.prompt(`Archive reason for sprint "${sprint.name}":`);
+    if (promptValue === null) return;
+    
+    const reason = promptValue.trim();
+    if (!reason) {
+      setPageError("Archive reason is required.");
+      return;
+    }
 
     setActionLoading(true);
     try {

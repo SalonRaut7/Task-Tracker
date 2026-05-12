@@ -120,6 +120,9 @@ export interface BackendSprint {
   status: number;
   createdAt?: string;
   updatedAt?: string;
+  archiveReason?: string;
+  archivedAtUTC?: string;
+  archivedByUserId?: string;
 }
 
 export enum SprintStatus {

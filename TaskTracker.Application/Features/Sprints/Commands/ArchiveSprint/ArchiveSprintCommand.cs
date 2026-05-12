@@ -9,7 +9,6 @@ public sealed class ArchiveSprintCommand : IRequest<SprintDto>, IAuthorizedReque
 {
     public Guid Id { get; set; }
     public string ArchiveReason { get; set; } = string.Empty;
-    public string? UserId { get; set; }
     public string RequiredPermission => AppPermissions.SprintsManage;
     public IReadOnlyList<ResourceScope> Scopes => [new ResourceScope(ResourceType.Sprint, Id)];
 }
