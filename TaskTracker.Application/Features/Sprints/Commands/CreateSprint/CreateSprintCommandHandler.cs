@@ -17,19 +17,22 @@ public sealed class CreateSprintCommandHandler : IRequestHandler<CreateSprintCom
 
     public async Task<SprintDto> Handle(CreateSprintCommand request, CancellationToken cancellationToken)
     {
-        var now = DateTime.UtcNow;
-        var sprint = new Sprint
-        {
-            Id = Guid.NewGuid(),
-            ProjectId = request.ProjectId,
-            Name = request.Name.Trim(),
-            Goal = string.IsNullOrWhiteSpace(request.Goal) ? null : request.Goal.Trim(),
-            StartDate = request.StartDate,
-            EndDate = request.EndDate,
-            Status = request.Status,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
+        // Guard: no date overlap with other sprints in this project
+        var overlaps = await _sprintRepository.HasOverlappingSprintAsync(
+            request.ProjectId, request.StartDate, request.EndDate,
+            cancellationToken: cancellationToken);
+
+        if (overlaps)
+            throw new InvalidOperationException(
+                "The sprint's date range overlaps with another sprint in this project.");
+
+        var sprint = Sprint.Create(
+            request.ProjectId,
+            request.Name,
+            request.Goal,
+            request.StartDate,
+            request.EndDate,
+            DateTime.UtcNow);
 
         await _sprintRepository.AddAsync(sprint, cancellationToken);
 

@@ -17,9 +17,6 @@ public sealed class UpdateSprintCommandValidator : AbstractValidator<UpdateSprin
         RuleFor(x => x.Goal)
             .MaximumLength(1000).WithMessage("Goal cannot exceed 1000 characters.");
 
-        RuleFor(x => x.Status)
-            .IsInEnum().WithMessage("Invalid sprint status.");
-
         RuleFor(x => x.StartDate)
             .NotEmpty().WithMessage("Start date is required.");
 
@@ -27,7 +24,7 @@ public sealed class UpdateSprintCommandValidator : AbstractValidator<UpdateSprin
             .NotEmpty().WithMessage("End date is required.");
 
         RuleFor(x => x.StartDate)
-            .LessThanOrEqualTo(x => x.EndDate)
-            .WithMessage("Start date must be earlier than or equal to end date.");
+            .LessThan(x => x.EndDate)
+            .WithMessage("Start date must be strictly before end date (minimum 1 day duration).");
     }
 }

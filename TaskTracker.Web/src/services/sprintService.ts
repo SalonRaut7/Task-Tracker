@@ -7,7 +7,6 @@ export interface CreateSprintPayload {
   goal?: string;
   startDate: string;
   endDate: string;
-  status: number;
 }
 
 export interface UpdateSprintPayload {
@@ -15,7 +14,6 @@ export interface UpdateSprintPayload {
   goal?: string;
   startDate: string;
   endDate: string;
-  status: number;
 }
 
 export async function getSprints(projectId?: string): Promise<BackendSprint[]> {
@@ -78,6 +76,55 @@ export async function deleteSprint(id: string): Promise<void> {
     requiresAuth: true,
   });
 }
+
+export async function startSprint(id: string): Promise<BackendSprint> {
+  const raw = await apiRequest<unknown>(`/api/Sprints/${id}/start`, {
+    method: "POST",
+    requiresAuth: true,
+  });
+  const sprint = normalizeSprint(raw);
+  if (!sprint) throw new Error("Invalid sprint payload returned by backend.");
+  return sprint;
+}
+
+export async function completeSprint(
+  id: string
+): Promise<{ sprint: BackendSprint; incompleteTaskCount: number; rolledOverTaskCount: number }> {
+  const raw = await apiRequest<Record<string, unknown>>(`/api/Sprints/${id}/complete`, {
+    method: "POST",
+    requiresAuth: true,
+  });
+  if (!raw || typeof raw !== "object") throw new Error("Invalid response from server.");
+  const sprint = normalizeSprint(raw.sprint ?? raw.Sprint);
+  if (!sprint) throw new Error("Invalid sprint in complete response.");
+  return {
+    sprint,
+    incompleteTaskCount: Number(raw.incompleteTaskCount ?? raw.IncompleteTaskCount ?? 0),
+    rolledOverTaskCount: Number(raw.rolledOverTaskCount ?? raw.RolledOverTaskCount ?? 0),
+  };
+}
+
+export async function cancelSprint(id: string): Promise<BackendSprint> {
+  const raw = await apiRequest<unknown>(`/api/Sprints/${id}/cancel`, {
+    method: "POST",
+    requiresAuth: true,
+  });
+  const sprint = normalizeSprint(raw);
+  if (!sprint) throw new Error("Invalid sprint payload returned by backend.");
+  return sprint;
+}
+
+export async function archiveSprint(id: string, reason: string): Promise<BackendSprint> {
+  const raw = await apiRequest<unknown>(`/api/Sprints/${id}/archive`, {
+    method: "POST",
+    requiresAuth: true,
+    body: { archiveReason: reason },
+  });
+  const sprint = normalizeSprint(raw);
+  if (!sprint) throw new Error("Invalid sprint payload returned by backend.");
+  return sprint;
+}
+
 
 function normalizeSprint(raw: unknown): BackendSprint | null {
   if (!raw || typeof raw !== "object") {

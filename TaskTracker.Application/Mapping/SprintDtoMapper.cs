@@ -18,7 +18,10 @@ internal static class SprintDtoMapper
             EndDate = sprint.EndDate,
             Status = sprint.Status,
             CreatedAt = sprint.CreatedAt,
-            UpdatedAt = sprint.UpdatedAt
+            UpdatedAt = sprint.UpdatedAt,
+            ArchiveReason = sprint.ArchiveReason,
+            ArchivedAtUTC = sprint.ArchivedAtUTC,
+            ArchivedByUserId = sprint.ArchivedByUserId
         };
     }
 
@@ -34,7 +37,10 @@ internal static class SprintDtoMapper
             EndDate = sprint.EndDate,
             Status = sprint.Status,
             CreatedAt = sprint.CreatedAt,
-            UpdatedAt = sprint.UpdatedAt
+            UpdatedAt = sprint.UpdatedAt,
+            ArchiveReason = sprint.ArchiveReason,
+            ArchivedAtUTC = sprint.ArchivedAtUTC,
+            ArchivedByUserId = sprint.ArchivedByUserId
         };
     }
 }

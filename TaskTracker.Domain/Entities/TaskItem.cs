@@ -169,6 +169,14 @@ namespace TaskTracker.Domain.Entities
             TaskCode = $"{projectKey}-{Id}";
         }
 
+        // Removes the task from its current sprint (rolls it back to the backlog).
+        // Called by CompleteSprintCommandHandler and CancelSprintCommandHandler.
+        public void UnlinkFromSprint(DateTime utcNow)
+        {
+            SprintId  = null;
+            UpdatedAt = NormalizeUtc(utcNow);
+        }
+
         public TaskSnapshot ToSnapshot()
         {
             return new TaskSnapshot
@@ -190,8 +198,6 @@ namespace TaskTracker.Domain.Entities
                 UpdatedAt = UpdatedAt,
             };
         }
-
-        // ── Private helpers ────────────────────────────────────────────────
 
         private void EnforcePastDateChangeRules(
             DateOnly? newStartDate,
