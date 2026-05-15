@@ -7,6 +7,7 @@
 # IDE and editor state
 .vs/
 .vscode/
+.idea/
 *.user
 *.suo
 *.userosscache
