@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskTracker.Domain", "TaskT
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskTracker.Infrastructure", "TaskTracker.Infrastructure\TaskTracker.Infrastructure.csproj", "{7F015995-DEDF-44E7-9A10-79AD3BC9BC13}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskTracker.Tests", "TaskTracker.Tests\TaskTracker.Tests.csproj", "{C39C14C6-FE8F-4595-81FF-50225F532798}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +38,9 @@ Global
 		{7F015995-DEDF-44E7-9A10-79AD3BC9BC13}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7F015995-DEDF-44E7-9A10-79AD3BC9BC13}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7F015995-DEDF-44E7-9A10-79AD3BC9BC13}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C39C14C6-FE8F-4595-81FF-50225F532798}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C39C14C6-FE8F-4595-81FF-50225F532798}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C39C14C6-FE8F-4595-81FF-50225F532798}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C39C14C6-FE8F-4595-81FF-50225F532798}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
