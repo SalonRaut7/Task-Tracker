@@ -23,6 +23,7 @@ TaskTracker.API/logs/
 # ASP.NET Core / local development secrets
 appsettings.Development.json
 **/appsettings.Development.json
+appsettings.IntegrationTests.json
 appsettings.Local.json
 **/appsettings.Local.json
 secrets.json
@@ -49,6 +50,7 @@ desktop.ini
 migrations_backup/
 node_modules
 
+*lscache
 
 .github
 /graphify-out

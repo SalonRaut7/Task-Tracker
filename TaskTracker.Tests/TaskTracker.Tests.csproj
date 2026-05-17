@@ -10,6 +10,8 @@
     <ItemGroup>
         <PackageReference Include="coverlet.collector" Version="6.0.2" />
         <PackageReference Include="FluentAssertions" Version="8.9.0" />
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.10" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.10" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
         <PackageReference Include="MockQueryable.Moq" Version="7.0.1" />
         <PackageReference Include="Moq" Version="4.20.72" />
@@ -26,8 +28,10 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\TaskTracker.API\TaskTracker.API.csproj" />
       <ProjectReference Include="..\TaskTracker.Application\TaskTracker.Application.csproj" />
       <ProjectReference Include="..\TaskTracker.Domain\TaskTracker.Domain.csproj" />
+      <ProjectReference Include="..\TaskTracker.Infrastructure\TaskTracker.Infrastructure.csproj" />
     </ItemGroup>
 
 </Project>
