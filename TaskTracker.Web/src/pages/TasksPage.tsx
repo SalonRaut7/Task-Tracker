@@ -16,7 +16,7 @@ import { getErrorMessage } from "../utils/getErrorMessage";
 import { getEpics } from "../services/epicService";
 import { getMembersByScope } from "../services/memberService";
 import { getSprints } from "../services/sprintService";
-import { loadTasks } from "../services/taskService";
+import { loadTasks, exportTasks } from "../services/taskService";
 import { uploadAttachment, getAttachments, deleteAttachment, downloadAttachment, getAttachmentDownloadUrl } from "../services/attachmentService";
 import { AppPermissions } from "../security/permissions";
 import {
@@ -196,6 +196,11 @@ export function TasksPage() {
     priority: "all",
   });
 
+  // ── Export state ──
+  const [exportLoading, setExportLoading] = useState(false);
+  // The project the user selects for export (separate from task query filter)
+  const [exportProjectId, setExportProjectId] = useState<string>("");
+
   const [createForm, setCreateForm] = useState<TaskForm>({
     projectId: "",
     epicId: "",
@@ -211,7 +216,7 @@ export function TasksPage() {
 
   const [editForm, setEditForm] = useState<TaskForm | null>(null);
 
-  // ── Attachment state ──
+  // Attachment state 
   const [createFiles, setCreateFiles] = useState<File[]>([]);
   const [createFileErrors, setCreateFileErrors] = useState<string[]>([]);
   const [attachmentWarning, setAttachmentWarning] = useState("");
@@ -452,6 +457,8 @@ export function TasksPage() {
       return;
     }
 
+    setExportProjectId((prev) => prev || projects[0].id);
+
     setCreateForm((prev) => {
       if (prev.projectId) {
         return prev;
@@ -560,7 +567,22 @@ export function TasksPage() {
 
 
 
-  // ── Attachment helpers ──
+  // ── Export handler ──
+  const handleExport = async () => {
+    if (!exportProjectId) return;
+    setPageError("");
+    setExportLoading(true);
+    try {
+      await exportTasks(exportProjectId, false);
+    } catch (error) {
+      setPageError(getErrorMessage(error, "Export failed."));
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  // Attachment helpers
+
   const handleCreateFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -784,16 +806,30 @@ export function TasksPage() {
           <h1>Tasks</h1>
           <p className="page-subtitle">Manage and track all tasks</p>
         </div>
-        <Button
-          text="New Task"
-          icon="plus"
-          type="default"
-          disabled={!canCreate}
-          onClick={() => {
-            setRequestError("");
-            setShowCreate(true);
-          }}
-        />
+        <div className="inline-actions">
+          <Button
+            text={exportLoading ? "Exporting…" : "Export"}
+            icon="export"
+            stylingMode="outlined"
+            disabled={exportLoading || !exportProjectId}
+            hint={
+              exportProjectId
+                ? "Download tasks for selected project as Excel"
+                : "Select a project below to enable export"
+            }
+            onClick={handleExport}
+          />
+          <Button
+            text="New Task"
+            icon="plus"
+            type="default"
+            disabled={!canCreate}
+            onClick={() => {
+              setRequestError("");
+              setShowCreate(true);
+            }}
+          />
+        </div>
       </section>
 
       {!canCreate || !canUpdate || !canDelete ? (
@@ -845,6 +881,19 @@ export function TasksPage() {
             width={190}
           />
 
+          <SelectBox
+            dataSource={[{ id: "", name: "Select project…" }, ...projects]}
+            displayExpr="name"
+            valueExpr="id"
+            value={exportProjectId}
+            onValueChanged={(event) =>
+              setExportProjectId(String(event.value ?? ""))
+            }
+            placeholder="Project for export"
+            width={210}
+            hint="Select a project to enable Export"
+          />
+
           <div className="view-toggle">
             <Button
               text="List"
@@ -859,6 +908,7 @@ export function TasksPage() {
           </div>
         </div>
       </section>
+
 
       {viewMode === "list" && (
         <section className="card">
@@ -1557,7 +1607,6 @@ export function TasksPage() {
             </label>
           </div>
 
-          {/* ── Attachments (optional) ── */}
           <div className="task-attachments-section">
             <label>
               Attachments <span className="attachment-upload-note">(optional, max {MAX_ATTACHMENTS_PER_TASK} files, 10 MB each)</span>

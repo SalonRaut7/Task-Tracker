@@ -4,8 +4,10 @@ using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Features.Tasks.Commands.CreateTask;
 using TaskTracker.Application.Features.Tasks.Commands.UpdateTask;
 using TaskTracker.Application.Features.Tasks.Commands.DeleteTask;
+using TaskTracker.Application.Features.Tasks.Commands.ImportTasks;
 using TaskTracker.Application.Features.Tasks.Queries.GetAllTasks;
 using TaskTracker.Application.Features.Tasks.Queries.GetTaskById;
+using TaskTracker.Application.Features.Tasks.Queries.ExportTasks;
 using MediatR;
 
 namespace TaskTracker.API.Controllers
@@ -68,6 +70,51 @@ namespace TaskTracker.API.Controllers
             if (!result) return NotFound();
             return NoContent();
         }
+
+        // GET: api/tasks/export?projectId=...&backlogOnly=false
+        [HttpGet("export")]
+        public async Task<IActionResult> Export(
+            [FromQuery] Guid projectId,
+            [FromQuery] bool backlogOnly,
+            CancellationToken cancellationToken)
+        {
+            var result = await _mediator.Send(
+                new ExportTasksQuery { ProjectId = projectId, BacklogOnly = backlogOnly },
+                cancellationToken);
+
+            var filename = backlogOnly ? $"{result.ProjectKey}.xlsx" : "TaskList.xlsx";
+            return File(result.FileBytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                filename);
+        }
+
+        // POST: api/tasks/import?projectId=...
+        [HttpPost("import")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<TaskImportResultDto>> Import(
+            [FromQuery] Guid projectId,
+            IFormFile file,
+            CancellationToken cancellationToken)
+        {
+            if (file is null || file.Length == 0)
+                return BadRequest("No file provided.");
+
+            var ext = Path.GetExtension(file.FileName);
+            if (!string.Equals(ext, ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest("Only .xlsx files are accepted.");
+
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms, cancellationToken);
+
+            var result = await _mediator.Send(
+                new ImportTasksCommand { ProjectId = projectId, FileBytes = ms.ToArray() },
+                cancellationToken);
+
+            // Return 422 so the frontend can detect validation errors vs server errors
+            if (result.Errors.Count > 0)
+                return UnprocessableEntity(result);
+
+            return Ok(result);
+        }
     }
-    
 }

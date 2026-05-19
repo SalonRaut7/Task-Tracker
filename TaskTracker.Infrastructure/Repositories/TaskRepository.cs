@@ -108,4 +108,17 @@ public class TaskRepository : ITaskRepository
                     task => newProjectKey + "-" + task.Id.ToString()),
                 cancellationToken);
     }
+
+    public async Task<Dictionary<string, TaskItem>> GetByTaskCodesForUpdateAsync(
+        Guid projectId,
+        IEnumerable<string> taskCodes,
+        CancellationToken cancellationToken = default)
+    {
+        var codeList = taskCodes.ToList();
+        var tasks = await _context.Tasks
+            .Where(t => t.ProjectId == projectId && codeList.Contains(t.TaskCode))
+            .ToListAsync(cancellationToken);
+
+        return tasks.ToDictionary(t => t.TaskCode, StringComparer.OrdinalIgnoreCase);
+    }
 }

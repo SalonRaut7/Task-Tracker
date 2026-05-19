@@ -177,6 +177,42 @@ namespace TaskTracker.Domain.Entities
             UpdatedAt = NormalizeUtc(utcNow);
         }
 
+        // Applies field values from an imported spreadsheet row.
+        // Skips past-date enforcement (bulk-import concern), but preserves core invariants.
+        // UpdatedAt is set from the file value when provided, otherwise falls back to utcNow.
+        public void ApplyImport(
+            string title,
+            string? description,
+            Status status,
+            TaskPriority priority,
+            Guid? epicId,
+            Guid? sprintId,
+            string? assigneeId,
+            DateOnly? startDate,
+            DateOnly? endDate,
+            DateTime? importedUpdatedAt,
+            DateTime utcNow)
+        {
+            EnsureStartBeforeOrEqualEnd(startDate, endDate);
+
+            Title       = title;
+            Description = description;
+            Status      = status;
+            Priority    = priority;
+            EpicId      = epicId;
+            SprintId    = sprintId;
+            AssigneeId  = string.IsNullOrWhiteSpace(assigneeId) ? null : assigneeId.Trim();
+            StartDate   = startDate;
+            EndDate     = endDate;
+
+            var resolvedUpdatedAt = importedUpdatedAt.HasValue
+                ? NormalizeUtc(importedUpdatedAt.Value)
+                : NormalizeUtc(utcNow);
+
+            // Ensure UpdatedAt is never before CreatedAt
+            UpdatedAt = resolvedUpdatedAt >= CreatedAt ? resolvedUpdatedAt : NormalizeUtc(utcNow);
+        }
+
         public TaskSnapshot ToSnapshot()
         {
             return new TaskSnapshot
