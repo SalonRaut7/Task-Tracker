@@ -88,12 +88,6 @@ public class ExportTasksQueryHandler : IRequestHandler<ExportTasksQuery, ExportT
         }
         sheet.SheetView.FreezeRows(1);
 
-        // Pre-compute counts — single pass
-        var completedCount = 0;
-        foreach (var t in tasks)
-            if (t.Status == Status.Completed) completedCount++;
-        var pendingCount = tasks.Count - completedCount;
-
         // Hoist branch decision outside loop
         Action<IXLRow, TaskItem> writeExtendedColumns = backlogOnly
             ? (r, t) => r.Cell(10).Value = FormatUserName(t.Reporter)
@@ -126,20 +120,27 @@ public class ExportTasksQueryHandler : IRequestHandler<ExportTasksQuery, ExportT
             writeExtendedColumns(xlRow, task);
         }
 
-        // Summary rows
-        var summaryRow = tasks.Count + 4;
-        void WriteSummary(string label, int value)
+        if (!backlogOnly)
         {
-            var labelCell = sheet.Cell(summaryRow, 1);
-            labelCell.Value = label;
-            labelCell.Style.Font.Bold = true;
-            sheet.Cell(summaryRow, 2).Value = value;
-            summaryRow++;
-        }
+            var completedCount = 0;
+            foreach (var t in tasks)
+                if (t.Status == Status.Completed) completedCount++;
+            var pendingCount = tasks.Count - completedCount;
 
-        WriteSummary("Total Tasks:", tasks.Count);
-        WriteSummary("Completed Tasks:", completedCount);
-        WriteSummary("Pending Tasks:", pendingCount);
+            var summaryRow = tasks.Count + 4;
+            void WriteSummary(string label, int value)
+            {
+                var labelCell = sheet.Cell(summaryRow, 1);
+                labelCell.Value = label;
+                labelCell.Style.Font.Bold = true;
+                sheet.Cell(summaryRow, 2).Value = value;
+                summaryRow++;
+            }
+
+            WriteSummary("Total Tasks:", tasks.Count);
+            WriteSummary("Completed Tasks:", completedCount);
+            WriteSummary("Pending Tasks:", pendingCount);
+        }
 
         sheet.Columns(1, headers.Length).AdjustToContents();
 

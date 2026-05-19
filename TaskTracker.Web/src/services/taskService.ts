@@ -300,8 +300,10 @@ export const exportTasks = async (
   anchor.download = downloadName;
   document.body.appendChild(anchor);
   anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }, 0);
 };
 
 /**
@@ -316,12 +318,17 @@ export const importTasks = async (
   const formData = new FormData();
   formData.append("file", file);
 
+  const accessToken = getAccessToken();
+  if (!accessToken) {
+    throw new Error("You must be signed in to import tasks.");
+  }
+
   const response = await fetch(
     resolveApiUrl(`${BASE_URL}/import?${params.toString()}`),
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${getAccessToken() ?? ""}`,
+        Authorization: `Bearer ${accessToken}`,
         // Note: do NOT set Content-Type — the browser must set it with the boundary
       },
       body: formData,

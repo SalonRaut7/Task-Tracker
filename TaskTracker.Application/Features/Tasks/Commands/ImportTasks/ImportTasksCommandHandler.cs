@@ -211,7 +211,7 @@ public class ImportTasksCommandHandler : IRequestHandler<ImportTasksCommand, Tas
 
         // ClosedXML may parse date cells as DateTime — convert to string
         if (cell.DataType == XLDataType.DateTime)
-            return cell.GetDateTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+            return cell.GetDateTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         var text = cell.GetString().Trim();
         return string.IsNullOrEmpty(text) ? null : text;
