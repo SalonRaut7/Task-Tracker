@@ -1652,3 +1652,67 @@ mark.mention-highlight.self {
   min-width: 320px;
   padding: 0.25rem 0;
 }
+
+/* ── Task Import / Export ───────────────────────────────────── */
+
+.import-errors-container {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--danger, #e53e3e);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: color-mix(in srgb, var(--surface) 92%, var(--danger, #e53e3e) 8%);
+}
+
+.import-errors-title {
+  margin: 0 0 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--danger, #e53e3e);
+}
+
+.import-error-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.import-error-table th,
+.import-error-table td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.import-error-table th {
+  background: var(--surface-alt, #f5f5f7);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.import-error-table tr:nth-child(even) td {
+  background: var(--surface-soft, #fafafa);
+}
+
+.import-success-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, #22c55e 12%);
+  border: 1px solid #22c55e;
+  color: #166534;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.import-file-info {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.import-file-info strong {
+  color: var(--text);
+}

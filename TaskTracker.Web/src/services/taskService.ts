@@ -5,7 +5,7 @@ import type {
   Status,
   TaskPriority,
 } from "../types/task";
-import { apiRequest } from "./apiClient";
+import { apiRequest, ACCESS_TOKEN_KEY } from "./apiClient";
 
 export type TaskGridLoadOptions = {
   skip?: number;
@@ -229,4 +229,128 @@ export const deleteTask = async (id: number, projectId: string): Promise<void> =
     method: "DELETE",
     requiresAuth: true,
   });
+};
+
+// Export / Import
+
+export interface ImportValidationError {
+  rowNumber: number;
+  field: string;
+  message: string;
+}
+
+export interface ImportResult {
+  createdCount: number;
+  updatedCount: number;
+  errors: ImportValidationError[];
+}
+
+const rawBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+const _apiBaseUrl = rawBaseUrl.replace(/\/+$/, "");
+
+function resolveApiUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${_apiBaseUrl}${normalizedPath}`;
+}
+
+function getAccessToken(): string | null {
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+/**
+ * Downloads all tasks for the given project as an .xlsx file.
+ * @param backlogOnly  When true, only exports backlog tasks (no sprint assigned).
+ */
+export const exportTasks = async (
+  projectId: string,
+  backlogOnly: boolean
+): Promise<void> => {
+  const params = new URLSearchParams({
+    projectId,
+    backlogOnly: String(backlogOnly),
+  });
+
+  const response = await fetch(resolveApiUrl(`${BASE_URL}/export?${params.toString()}`), {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${getAccessToken() ?? ""}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Export failed (${response.status}).`);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+
+  // Read filename from Content-Disposition header (e.g. "attachment; filename=PROJ.xlsx")
+  let downloadName = backlogOnly ? `tasks-export.xlsx` : `TaskList.xlsx`;
+  const disposition = response.headers.get("content-disposition");
+  if (disposition) {
+    const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+    if (match?.[1]) {
+      downloadName = decodeURIComponent(match[1].replace(/"/g, ""));
+    }
+  }
+
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = downloadName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  setTimeout(() => {
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }, 0);
+};
+
+/**
+ * Uploads an .xlsx file and imports tasks into the given project.
+ * Returns an ImportResult — check `errors.length` before treating it as success.
+ */
+export const importTasks = async (
+  projectId: string,
+  file: File
+): Promise<ImportResult> => {
+  const params = new URLSearchParams({ projectId });
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const accessToken = getAccessToken();
+  if (!accessToken) {
+    throw new Error("You must be signed in to import tasks.");
+  }
+
+  const response = await fetch(
+    resolveApiUrl(`${BASE_URL}/import?${params.toString()}`),
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        // Note: do NOT set Content-Type — the browser must set it with the boundary
+      },
+      body: formData,
+    }
+  );
+
+  // 422 = validation errors returned from the backend — parse them as ImportResult
+  if (response.status === 422) {
+    const data = (await response.json()) as ImportResult;
+    return data;
+  }
+
+  if (!response.ok) {
+    let message = `Import failed (${response.status}).`;
+    try {
+      const err = (await response.json()) as { detail?: string; title?: string };
+      message = err.detail ?? err.title ?? message;
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(message);
+  }
+
+  return (await response.json()) as ImportResult;
 };

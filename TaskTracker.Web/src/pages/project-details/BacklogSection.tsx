@@ -11,7 +11,8 @@ import { useApp } from "../../context/AppContext";
 import { getEpics } from "../../services/epicService";
 import { getMembersByScope } from "../../services/memberService";
 import { getSprints } from "../../services/sprintService";
-import { loadTasks } from "../../services/taskService";
+import { loadTasks, exportTasks, importTasks } from "../../services/taskService";
+import type { ImportValidationError, ImportResult } from "../../services/taskService";
 import {
   uploadAttachment,
   deleteAttachment,
@@ -153,6 +154,15 @@ export function BacklogSection({
   const [members, setMembers] = useState<ScopeMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [pageError, setPageError] = useState("");
+
+  // Export / Import state
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importErrors, setImportErrors] = useState<ImportValidationError[]>([]);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState<TaskForm>(emptyTaskForm());
@@ -296,6 +306,62 @@ export function BacklogSection({
     }
   };
 
+  // Export handler
+  const handleExport = async () => {
+    setPageError("");
+    setExportLoading(true);
+    try {
+      await exportTasks(projectId,  true);
+    } catch (error) {
+      setPageError(getErrorMessage(error, "Export failed."));
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  // Import file picker 
+  const handleImportFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setPageError("Only .xlsx files are accepted for import.");
+      return;
+    }
+    setImportFile(file);
+    setImportErrors([]);
+    setImportResult(null);
+    setShowImportModal(true);
+  };
+
+  const closeImportModal = () => {
+    setShowImportModal(false);
+    setImportFile(null);
+    setImportErrors([]);
+    setImportResult(null);
+  };
+
+  // Import confirm (Pass 2 fires only if backend returns 0 errors)
+  const handleImportConfirm = async () => {
+    if (!importFile) return;
+    setImportLoading(true);
+    setImportErrors([]);
+    try {
+      const result = await importTasks(projectId, importFile);
+      if (result.errors.length > 0) {
+        setImportErrors(result.errors);
+      } else {
+        setImportResult(result);
+        await loadBacklog();
+      }
+    } catch (error) {
+      setPageError(getErrorMessage(error, "Import failed."));
+      closeImportModal();
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const handleCreateTask = async () => {
     setCreateError("");
     setAttachmentWarning("");
@@ -416,6 +482,14 @@ export function BacklogSection({
 
   return (
     <section className="card">
+      <input
+        ref={importFileRef}
+        type="file"
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        style={{ display: "none" }}
+        onChange={handleImportFileSelect}
+      />
+
       <div className="page-title-row">
         <div>
           <h2>Task Backlog</h2>
@@ -423,20 +497,38 @@ export function BacklogSection({
             Tasks not yet assigned to a sprint
           </p>
         </div>
-        <Button
-          text="New Task"
-          icon="plus"
-          type="default"
-          disabled={!canCreateTask}
-          onClick={() => {
-            setCreateError("");
-            setAttachmentWarning("");
-            setCreateFiles([]);
-            setCreateFileErrors([]);
-            setCreateForm(emptyTaskForm());
-            setShowCreate(true);
-          }}
-        />
+        <div className="inline-actions">
+          <Button
+            text={exportLoading ? "Exporting…" : "Export"}
+            icon="export"
+            stylingMode="outlined"
+            disabled={exportLoading}
+            hint="Download backlog as Excel"
+            onClick={handleExport}
+          />
+          <Button
+            text="Import"
+            icon="import"
+            stylingMode="outlined"
+            disabled={!canCreateTask}
+            hint={canCreateTask ? "Import tasks from Excel" : "You don't have permission to create tasks"}
+            onClick={() => importFileRef.current?.click()}
+          />
+          <Button
+            text="New Task"
+            icon="plus"
+            type="default"
+            disabled={!canCreateTask}
+            onClick={() => {
+              setCreateError("");
+              setAttachmentWarning("");
+              setCreateFiles([]);
+              setCreateFileErrors([]);
+              setCreateForm(emptyTaskForm());
+              setShowCreate(true);
+            }}
+          />
+        </div>
       </div>
 
       {pageError && <div className="form-error">{pageError}</div>}
@@ -1073,6 +1165,81 @@ export function BacklogSection({
               disabled={moveLoading || !selectedSprintId || sprints.length === 0}
               onClick={handleMoveToSprint}
             />
+          </div>
+        </div>
+      </Popup>
+
+      <Popup
+        visible={showImportModal}
+        onHiding={closeImportModal}
+        title="Import Tasks from Excel"
+        width={660}
+        height="auto"
+        showCloseButton
+        dragEnabled={false}
+      >
+        <div className="popup-form">
+          {importFile && (
+            <p className="import-file-info">
+              File: <strong>{importFile.name}</strong>{" "}
+              <span style={{ color: "var(--text-muted)" }}>
+                ({(importFile.size / 1024).toFixed(1)} KB)
+              </span>
+            </p>
+          )}
+
+          {importErrors.length > 0 && (
+            <div className="import-errors-container">
+              <p className="import-errors-title">
+                ⚠ {importErrors.length} validation error
+                {importErrors.length !== 1 ? "s" : ""} — fix the file and
+                re-import
+              </p>
+              <table className="import-error-table">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Field</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importErrors.map((err, i) => (
+                    <tr key={i}>
+                      <td>{err.rowNumber}</td>
+                      <td>{err.field}</td>
+                      <td>{err.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {importResult && (
+            <div className="import-success-banner">
+              ✓ Import complete — {importResult.createdCount} created,{" "}
+              {importResult.updatedCount} updated.
+            </div>
+          )}
+
+          <div className="popup-actions">
+            <Button
+              text="Cancel"
+              stylingMode="outlined"
+              onClick={closeImportModal}
+            />
+            {!importResult && (
+              <Button
+                text={importLoading ? "Importing…" : "Import"}
+                type="default"
+                disabled={
+                  importLoading ||
+                  importErrors.length > 0
+                }
+                onClick={handleImportConfirm}
+              />
+            )}
           </div>
         </div>
       </Popup>

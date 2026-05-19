@@ -17,5 +17,11 @@ namespace TaskTracker.Domain.Interfaces
         Task DeleteAsync(TaskItem task, CancellationToken cancellationToken = default);
         Task<string?> GetProjectKeyAsync(Guid projectId, CancellationToken cancellationToken = default);
         Task UpdateTaskCodesForProjectAsync(Guid projectId, string newProjectKey, CancellationToken cancellationToken = default);
+
+        // Returns tracked TaskItem entities (for update) keyed by TaskCode, filtered to the given project. Used exclusively by the import handler.
+        // Task<Dictionary<string, TaskItem>> GetByTaskCodesForUpdateAsync(
+        //     Guid projectId,
+        //     IEnumerable<string> taskCodes,
+        //     CancellationToken cancellationToken = default);
     }
 }

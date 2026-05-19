@@ -3,39 +3,38 @@ using TaskTracker.Domain.Enums;
 
 namespace TaskTracker.Domain.Entities;
 
-/// <summary>
-/// Invitation aggregate. Manages onboarding a user into an organization or project scope.
-/// Only one active (Pending) invite per user + scope is allowed.
-/// </summary>
+// Invitation aggregate. Manages onboarding a user into an organization or project scope.
+// Only one active (Pending) invite per user + scope is allowed.
+
 public class Invitation
 {
     public Guid Id { get; private set; }
 
-    /// Organization or Project.
+    // Organization or Project.
     public ScopeType ScopeType { get; private set; }
 
-    /// The org or project ID this invitation targets.
+    // The org or project ID this invitation targets.
     public Guid ScopeId { get; private set; }
 
-    /// The invited user's email address (normalized to lowercase).
+    // The invited user's email address (normalized to lowercase).
     public string InviteeEmail { get; private set; } = string.Empty;
 
-    /// Set if the invitee already has an account at invite-creation time.
+    // Set if the invitee already has an account at invite-creation time.
     public string? InviteeUserId { get; private set; }
 
-    /// The scoped role being granted (e.g. OrgAdmin, Developer).
+    // The scoped role being granted (e.g. OrgAdmin, Developer).
     public string Role { get; private set; } = string.Empty;
 
-    /// SHA-256 hash of the secure invite token. Raw token is never stored.
+    // SHA-256 hash of the secure invite token. Raw token is never stored.
     public string TokenHash { get; private set; } = string.Empty;
 
-    /// When the invitation expires.
+    // When the invitation expires.
     public DateTime ExpiresAt { get; private set; }
 
-    /// Current lifecycle status.
+    // Current lifecycle status.
     public InvitationStatus Status { get; private set; } = InvitationStatus.Pending;
 
-    /// The user who created this invitation.
+    // The user who created this invitation.
     public string InvitedByUserId { get; private set; } = string.Empty;
 
     public DateTime CreatedAt { get; private set; }
@@ -86,8 +85,6 @@ public class Invitation
             CreatedAt = NormalizeUtc(createdAtUtc)
         };
     }
-
-    // ── Domain methods ──────────────────────────────────────
 
     public bool IsExpired => DateTime.UtcNow >= ExpiresAt;
 
