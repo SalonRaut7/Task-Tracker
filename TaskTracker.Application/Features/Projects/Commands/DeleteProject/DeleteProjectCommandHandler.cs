@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Constants;
 using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
@@ -13,19 +14,22 @@ public sealed class DeleteProjectCommandHandler : IRequestHandler<DeleteProjectC
     private readonly INotificationDispatchService _notificationDispatchService;
     private readonly ICurrentUserService _currentUser;
     private readonly IUserRepository _userRepository;
+    private readonly ICacheService _cache;
 
     public DeleteProjectCommandHandler(
         IProjectRepository projectRepository,
         IMembershipRepository membershipRepository,
         INotificationDispatchService notificationDispatchService,
         ICurrentUserService currentUser,
-        IUserRepository userRepository)
+        IUserRepository userRepository,
+        ICacheService cache)
     {
         _projectRepository = projectRepository;
         _membershipRepository = membershipRepository;
         _notificationDispatchService = notificationDispatchService;
         _currentUser = currentUser;
         _userRepository = userRepository;
+        _cache = cache;
     }
 
     public async Task<bool> Handle(DeleteProjectCommand request, CancellationToken cancellationToken)
@@ -51,6 +55,17 @@ public sealed class DeleteProjectCommandHandler : IRequestHandler<DeleteProjectC
         var message = $"{actorName} deleted project {project.Name}";
 
         await _projectRepository.DeleteAsync(project, cancellationToken);
+
+        // Invalidate the project metadata cache entry.
+        // Also drop the project-ID list for every member so their next query
+        // does not see this project in their scoping filter.
+        _cache.Remove(CacheKeys.Project(project.Id));
+        foreach (var memberId in projectMemberUserIds)
+        {
+            _cache.Remove(CacheKeys.UserProjectIds(memberId));
+            _cache.Remove(CacheKeys.UserPermissions(memberId));
+            _cache.Remove(CacheKeys.UserProjectRole(memberId, project.Id));
+        }
 
         if (recipientUserIds.Count > 0)
         {

@@ -1,5 +1,7 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Constants;
+using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Interfaces;
 
 namespace TaskTracker.Application.Features.Users.Commands.RestoreUser;
@@ -8,11 +10,16 @@ public sealed class RestoreUserCommandHandler : IRequestHandler<RestoreUserComma
 {
     private readonly IUserRepository _userRepository;
     private readonly ICurrentUserService _currentUser;
+    private readonly ICacheService _cache;
 
-    public RestoreUserCommandHandler(IUserRepository userRepository, ICurrentUserService currentUser)
+    public RestoreUserCommandHandler(
+        IUserRepository userRepository,
+        ICurrentUserService currentUser,
+        ICacheService cache)
     {
         _userRepository = userRepository;
-        _currentUser = currentUser;
+        _currentUser    = currentUser;
+        _cache          = cache;
     }
 
     public async Task<bool> Handle(RestoreUserCommand request, CancellationToken cancellationToken)
@@ -31,6 +38,11 @@ public sealed class RestoreUserCommandHandler : IRequestHandler<RestoreUserComma
         }
 
         await _userRepository.RestoreAsync(user, cancellationToken);
+
+        // Invalidate the cached status so the user can authenticate again immediately.
+        _cache.Remove(CacheKeys.UserStatus(request.UserId));
+        _cache.Remove(CacheKeys.UserPermissions(request.UserId));
+
         return true;
     }
 

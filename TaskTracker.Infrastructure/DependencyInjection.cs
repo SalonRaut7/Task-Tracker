@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TaskTracker.Application.Authorization;
@@ -18,7 +19,6 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        // ── Options ──────────────────────────────────────────────
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
         services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
@@ -26,8 +26,14 @@ public static class DependencyInjection
         services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
         services.Configure<IdentitySecurityOptions>(configuration.GetSection(IdentitySecurityOptions.SectionName));
         services.Configure<CloudinaryOptions>(configuration.GetSection(CloudinaryOptions.SectionName));
+        services.Configure<CacheOptions>(configuration.GetSection(CacheOptions.SectionName));
 
-        // ── ASP.NET Identity ─────────────────────────────────────
+        // Cache
+        // IMemoryCache and ICacheService are Singleton — IMemoryCache is designed for this lifetime.
+        services.AddMemoryCache();
+        services.AddSingleton<ICacheService, MemoryCacheService>();
+
+        // ASP.NET Identity
         var identitySecurityOptions = configuration.GetSection(IdentitySecurityOptions.SectionName).Get<IdentitySecurityOptions>() ?? new IdentitySecurityOptions();
 
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -53,7 +59,7 @@ public static class DependencyInjection
         .AddEntityFrameworkStores<AppDbContext>()
         .AddDefaultTokenProviders();
 
-        // ── Services ─────────────────────────────────────────────
+        // Services
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IOtpService, OtpService>();
         services.AddScoped<IEmailSender, EmailSender>();
@@ -63,7 +69,7 @@ public static class DependencyInjection
         services.AddScoped<INotificationPushService, NotificationPushService>();
         services.AddScoped<IFileStorageService, CloudinaryStorageService>();
 
-        // ── Repositories ─────────────────────────────────────────
+        // Repositories 
         services.AddScoped<ITaskRepository, TaskRepository>();
         services.AddScoped<IOrganizationRepository, OrganizationRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
