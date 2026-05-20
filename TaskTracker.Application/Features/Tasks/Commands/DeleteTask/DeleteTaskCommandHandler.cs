@@ -1,4 +1,6 @@
 using MediatR;
+using TaskTracker.Application.Constants;
+using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Events;
 using TaskTracker.Domain.Interfaces;
 
@@ -8,13 +10,16 @@ public class DeleteTaskCommandHandler : IRequestHandler<DeleteTaskCommand, bool>
 {
     private readonly ITaskRepository _taskRepository;
     private readonly ICurrentUserService _currentUser;
+    private readonly ICacheService _cache;
 
     public DeleteTaskCommandHandler(
         ITaskRepository taskRepository,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        ICacheService cache)
     {
         _taskRepository = taskRepository;
         _currentUser = currentUser;
+        _cache = cache;
     }
 
     public async Task<bool> Handle(DeleteTaskCommand request, CancellationToken cancellationToken)
@@ -49,6 +54,11 @@ public class DeleteTaskCommandHandler : IRequestHandler<DeleteTaskCommand, bool>
         });
 
         await _taskRepository.DeleteAsync(task, cancellationToken);
+
+        // Remove the task→project scope mapping from cache.
+        // Without this, a new task created with the same int ID (unlikely but possible)
+        // could pick up the stale projectId entry.
+        _cache.Remove(CacheKeys.TaskProject(taskId));
 
         return true;
     }

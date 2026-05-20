@@ -1,4 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using TaskTracker.Application.Constants;
+using TaskTracker.Application.Interfaces;
+using TaskTracker.Application.Options;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Interfaces;
 using TaskTracker.Infrastructure.Data;
@@ -8,31 +12,51 @@ namespace TaskTracker.Infrastructure.Repositories;
 public class MembershipRepository : IMembershipRepository
 {
     private readonly AppDbContext _dbContext;
+    private readonly ICacheService _cache;
+    private readonly CacheOptions _cacheOptions;
 
-    public MembershipRepository(AppDbContext dbContext)
+    public MembershipRepository(
+        AppDbContext dbContext,
+        ICacheService cache,
+        IOptions<CacheOptions> cacheOptions)
     {
         _dbContext = dbContext;
+        _cache = cache;
+        _cacheOptions = cacheOptions.Value;
     }
 
-    // ── Queries ──────────────────────────────────────────────
+    // Queries (cache-backed)
+    public Task<IReadOnlyList<Guid>> GetUserOrganizationIdsAsync(string userId, CancellationToken ct = default)
+        => _cache.GetOrCreateAsync<IReadOnlyList<Guid>>(
+            CacheKeys.UserOrgIds(userId),
+            async () =>
+            {
+                var result = await _dbContext.UserOrganizations
+                    .AsNoTracking()
+                    .Where(uo => uo.UserId == userId)
+                    .Select(uo => uo.OrganizationId)
+                    .ToListAsync(ct);
+                return (IReadOnlyList<Guid>)result;
+            },
+            slidingExpiration: _cacheOptions.MembershipIdsSliding,
+            absoluteExpiration: _cacheOptions.MembershipIdsAbsolute,
+            cancellationToken: ct);
 
-    public async Task<IReadOnlyList<Guid>> GetUserOrganizationIdsAsync(string userId, CancellationToken ct = default)
-    {
-        return await _dbContext.UserOrganizations
-            .AsNoTracking()
-            .Where(uo => uo.UserId == userId)
-            .Select(uo => uo.OrganizationId)
-            .ToListAsync(ct);
-    }
-
-    public async Task<IReadOnlyList<Guid>> GetUserProjectIdsAsync(string userId, CancellationToken ct = default)
-    {
-        return await _dbContext.UserProjects
-            .AsNoTracking()
-            .Where(up => up.UserId == userId)
-            .Select(up => up.ProjectId)
-            .ToListAsync(ct);
-    }
+    public Task<IReadOnlyList<Guid>> GetUserProjectIdsAsync(string userId, CancellationToken ct = default)
+        => _cache.GetOrCreateAsync<IReadOnlyList<Guid>>(
+            CacheKeys.UserProjectIds(userId),
+            async () =>
+            {
+                var result = await _dbContext.UserProjects
+                    .AsNoTracking()
+                    .Where(up => up.UserId == userId)
+                    .Select(up => up.ProjectId)
+                    .ToListAsync(ct);
+                return (IReadOnlyList<Guid>)result;
+            },
+            slidingExpiration: _cacheOptions.MembershipIdsSliding,
+            absoluteExpiration: _cacheOptions.MembershipIdsAbsolute,
+            cancellationToken: ct);
 
     public async Task<bool> IsOrganizationMemberAsync(string userId, Guid organizationId, CancellationToken ct = default)
     {
@@ -59,7 +83,7 @@ public class MembershipRepository : IMembershipRepository
             .ToListAsync(ct);
     }
 
-    // ── Mutations ─────────────────────────────────────────────
+    // Mutations (DB write + cache invalidation)
 
     public async Task UpsertOrganizationMemberAsync(
         string userId, Guid organizationId, string role, string? invitedByUserId, CancellationToken ct = default)
@@ -87,6 +111,7 @@ public class MembershipRepository : IMembershipRepository
         }
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateUserMembershipCache(userId, organizationId: organizationId);
     }
 
     public async Task UpsertProjectMemberAsync(
@@ -94,7 +119,6 @@ public class MembershipRepository : IMembershipRepository
     {
         var now = DateTime.UtcNow;
 
-        // Defensive: verify org membership
         var project = await _dbContext.Projects
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == projectId, ct)
@@ -129,6 +153,7 @@ public class MembershipRepository : IMembershipRepository
         }
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateUserMembershipCache(userId, projectId: projectId);
     }
 
     public async Task<UserOrganization> UpdateOrganizationMemberRoleAsync(
@@ -143,6 +168,7 @@ public class MembershipRepository : IMembershipRepository
         membership.UpdatedAt = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync(ct);
 
+        InvalidateUserMembershipCache(userId, organizationId: organizationId);
         return membership;
     }
 
@@ -158,6 +184,7 @@ public class MembershipRepository : IMembershipRepository
         membership.UpdatedAt = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync(ct);
 
+        InvalidateUserMembershipCache(userId, projectId: projectId);
         return membership;
     }
 
@@ -181,6 +208,9 @@ public class MembershipRepository : IMembershipRepository
         _dbContext.UserProjects.RemoveRange(projectMemberships);
         _dbContext.UserOrganizations.Remove(membership);
         await _dbContext.SaveChangesAsync(ct);
+
+        // Invalidate all user membership cache (org + all project roles lost)
+        InvalidateAllUserCache(userId);
     }
 
     public async Task RemoveProjectMemberAsync(string userId, Guid projectId, CancellationToken ct = default)
@@ -191,5 +221,37 @@ public class MembershipRepository : IMembershipRepository
 
         _dbContext.UserProjects.Remove(membership);
         await _dbContext.SaveChangesAsync(ct);
+
+        InvalidateUserMembershipCache(userId, projectId: projectId);
+    }
+
+    // Cache invalidation helpers
+
+    // Invalidates membership ID lists, role-in-scope, and the permissions bundle
+    // for the specified user after an org or project membership mutation.
+    private void InvalidateUserMembershipCache(string userId, Guid? organizationId = null, Guid? projectId = null)
+    {
+        // Always invalidate the permissions bundle and both ID lists
+        _cache.Remove(CacheKeys.UserPermissions(userId));
+        _cache.Remove(CacheKeys.UserOrgIds(userId));
+        _cache.Remove(CacheKeys.UserProjectIds(userId));
+
+        // Invalidate the specific role-in-scope entry
+        if (organizationId.HasValue)
+            _cache.Remove(CacheKeys.UserOrgRole(userId, organizationId.Value));
+
+        if (projectId.HasValue)
+            _cache.Remove(CacheKeys.UserProjectRole(userId, projectId.Value));
+    }
+
+    // Invalidates all user-scoped cache entries (used when removing from org,
+    // which cascades across all project memberships too).
+    private void InvalidateAllUserCache(string userId)
+    {
+        _cache.Remove(CacheKeys.UserPermissions(userId));
+        _cache.Remove(CacheKeys.UserOrgIds(userId));
+        _cache.Remove(CacheKeys.UserProjectIds(userId));
+        _cache.RemoveByPrefix($"cache:user-org-role:{userId}:");
+        _cache.RemoveByPrefix($"cache:user-proj-role:{userId}:");
     }
 }

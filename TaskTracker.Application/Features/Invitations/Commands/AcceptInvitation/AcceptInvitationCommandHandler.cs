@@ -1,4 +1,5 @@
 using MediatR;
+using TaskTracker.Application.Constants;
 using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Entities;
 using TaskTracker.Domain.Enums;
@@ -13,19 +14,22 @@ public sealed class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvit
     private readonly ITokenService _tokenService;
     private readonly IMembershipRepository _membershipRepository;
     private readonly INotificationPushService _pushService;
+    private readonly ICacheService _cache;
 
     public AcceptInvitationCommandHandler(
         IInvitationRepository invitationRepository,
         ICurrentUserService currentUser,
         ITokenService tokenService,
         IMembershipRepository membershipRepository,
-        INotificationPushService pushService)
+        INotificationPushService pushService,
+        ICacheService cache)
     {
         _invitationRepository = invitationRepository;
         _currentUser = currentUser;
         _tokenService = tokenService;
         _membershipRepository = membershipRepository;
         _pushService = pushService;
+        _cache = cache;
     }
 
     public async Task<AcceptInvitationResult> Handle(AcceptInvitationCommand request, CancellationToken cancellationToken)
@@ -67,7 +71,7 @@ public sealed class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvit
 
         invitation.Accept(userId);
 
-        if (invitation.ScopeType == Domain.Enums.ScopeType.Organization)
+        if (invitation.ScopeType == ScopeType.Organization)
         {
             await _membershipRepository.UpsertOrganizationMemberAsync(
                 userId, invitation.ScopeId, invitation.Role, invitation.InvitedByUserId, cancellationToken);
@@ -79,6 +83,13 @@ public sealed class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvit
         }
 
         await _invitationRepository.UpdateAsync(invitation, cancellationToken);
+
+        // Invalidate the accepting user's membership cache — they now have new org/project access.
+        // MembershipRepository.Upsert already handles this, but we invalidate the permissions
+        // bundle here too since AcceptInvitation is the only path that calls Upsert externally.
+        _cache.Remove(CacheKeys.UserPermissions(userId));
+        _cache.Remove(CacheKeys.UserOrgIds(userId));
+        _cache.Remove(CacheKeys.UserProjectIds(userId));
 
         await _pushService.BroadcastScopeMembersChangedAsync(invitation.ScopeType, invitation.ScopeId, cancellationToken);
         await _pushService.BroadcastUserWorkspaceChangedAsync(userId, cancellationToken);

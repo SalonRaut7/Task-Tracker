@@ -11,6 +11,7 @@ using TaskTracker.Infrastructure;
 using TaskTracker.Application.Features.Tasks.Commands.CreateTask;
 using TaskTracker.Application.Options;
 using TaskTracker.Application.Interfaces;
+using TaskTracker.Application.Constants;
 using TaskTracker.Application.Services;
 using TaskTracker.Application.Behaviors;
 using TaskTracker.API.Middlewares;
@@ -31,13 +32,13 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Services(services)
     .Enrich.FromLogContext());
 
-// ── Database ─────────────────────────────────────────────────────
+// Database 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
            .ConfigureWarnings(w => w.Ignore(
                Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
-// ── Options ──────────────────────────────────────────────────────
+// Options
 builder.Services.Configure<TaskDateRulesOptions>(
     builder.Configuration.GetSection(TaskDateRulesOptions.SectionName));
 builder.Services.Configure<AdminSeedOptions>(
@@ -45,10 +46,10 @@ builder.Services.Configure<AdminSeedOptions>(
 builder.Services.Configure<InviteOptions>(
     builder.Configuration.GetSection(InviteOptions.SectionName));
 
-// ── Infrastructure (Identity, JWT services, Email, OTP) ──────────
+// Infrastructure (Identity, JWT services, Email, OTP) 
 builder.Services.AddInfrastructure(builder.Configuration);
 
-// ── JWT Authentication ───────────────────────────────────────────
+// JWT Authentication 
 var jwtSettings = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()!;
 
 builder.Services.AddAuthentication(options =>
@@ -92,11 +93,27 @@ builder.Services.AddAuthentication(options =>
                 return;
             }
 
-            var userManager = context.HttpContext.RequestServices
-                .GetRequiredService<UserManager<ApplicationUser>>();
-            var user = await userManager.FindByIdAsync(userId);
+            // Use ICacheService to avoid a DB round-trip on every request.
+            // Cache key: cache:user-status:{userId}  TTL: 5 min sliding / 15 min absolute.
+            // Invalidated explicitly by ArchiveUserCommandHandler and RestoreUserCommandHandler.
+            var cacheService = context.HttpContext.RequestServices.GetRequiredService<ICacheService>();
+            var cacheOpts    = context.HttpContext.RequestServices.GetRequiredService<IOptions<CacheOptions>>().Value;
 
-            if (user is null || !user.IsActive || user.IsArchived)
+            var (isActive, isArchived) = await cacheService.GetOrCreateAsync(
+                CacheKeys.UserStatus(userId),
+                async () =>
+                {
+                    var userManager = context.HttpContext.RequestServices
+                        .GetRequiredService<UserManager<ApplicationUser>>();
+                    var user = await userManager.FindByIdAsync(userId);
+                    return user is null
+                        ? (IsActive: false, IsArchived: true)   // treat missing user as archived
+                        : (user.IsActive, user.IsArchived);
+                },
+                slidingExpiration: cacheOpts.UserStatusSliding,
+                absoluteExpiration: cacheOpts.UserStatusAbsolute);
+
+            if (!isActive || isArchived)
             {
                 context.Fail("Account is deactivated or archived.");
             }
@@ -104,28 +121,28 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// ── MediatR + FluentValidation ───────────────────────────────────
+// MediatR + FluentValidation
 builder.Services.AddMediatR(typeof(CreateTaskCommand).Assembly);
 builder.Services.AddValidatorsFromAssembly(typeof(CreateTaskCommand).Assembly);
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(AuthorizationBehavior<,>));
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
-// ── HTTP Context ─────────────────────────────────────────────────
+// HTTP Context 
 builder.Services.AddHttpContextAccessor();
 
-// ── Controllers + Swagger ────────────────────────────────────────
+// Controllers + Swagger 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ── SignalR ──────────────────────────────────────────────────────
+// SignalR 
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<TaskTracker.Infrastructure.Services.DueDateMonitorService>();
 builder.Services.AddScoped<INotificationDispatchService, NotificationDispatchService>();
 builder.Services.AddScoped<ICommentMentionResolver, CommentMentionResolver>();
 
-// ── CORS ─────────────────────────────────────────────────────────
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -141,7 +158,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// ── Seed roles, permissions, and SuperAdmin ──────────────────────
+// Seed roles, permissions, and SuperAdmin
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -161,7 +178,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// ── Middleware pipeline ──────────────────────────────────────────
+// Middleware pipeline 
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSwagger();

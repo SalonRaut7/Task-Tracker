@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Constants;
 using TaskTracker.Application.DTOs;
 using TaskTracker.Application.Interfaces;
 using TaskTracker.Application.Mapping;
@@ -16,6 +17,7 @@ public sealed class UpdateProjectCommandHandler : IRequestHandler<UpdateProjectC
     private readonly ICurrentUserService _currentUser;
     private readonly IUserRepository _userRepository;
     private readonly ITaskRepository _taskRepository;
+    private readonly ICacheService _cache;
 
     public UpdateProjectCommandHandler(
         IProjectRepository projectRepository,
@@ -23,7 +25,8 @@ public sealed class UpdateProjectCommandHandler : IRequestHandler<UpdateProjectC
         INotificationDispatchService notificationDispatchService,
         ICurrentUserService currentUser,
         IUserRepository userRepository,
-        ITaskRepository taskRepository)
+        ITaskRepository taskRepository,
+        ICacheService cache)
     {
         _projectRepository = projectRepository;
         _membershipRepository = membershipRepository;
@@ -31,6 +34,7 @@ public sealed class UpdateProjectCommandHandler : IRequestHandler<UpdateProjectC
         _currentUser = currentUser;
         _userRepository = userRepository;
         _taskRepository = taskRepository;
+        _cache = cache;
     }
 
     public async Task<ProjectDto?> Handle(UpdateProjectCommand request, CancellationToken cancellationToken)
@@ -51,6 +55,10 @@ public sealed class UpdateProjectCommandHandler : IRequestHandler<UpdateProjectC
         project.UpdatedAt = DateTime.UtcNow;
 
         await _projectRepository.UpdateAsync(project, cancellationToken);
+
+        // Invalidate the project metadata cache entry so the updated name/key
+        // are immediately visible in authorization lookups.
+        _cache.Remove(CacheKeys.Project(project.Id));
 
         // Cascade TaskCode update when project key changes
         if (!string.Equals(oldKey, project.Key, StringComparison.Ordinal))

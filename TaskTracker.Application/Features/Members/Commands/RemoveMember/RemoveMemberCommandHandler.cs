@@ -1,5 +1,6 @@
 using MediatR;
 using TaskTracker.Application.Authorization;
+using TaskTracker.Application.Constants;
 using TaskTracker.Application.Interfaces;
 using TaskTracker.Domain.Constants;
 using TaskTracker.Domain.Enums;
@@ -12,15 +13,18 @@ public sealed class RemoveMemberCommandHandler : IRequestHandler<RemoveMemberCom
     private readonly ICurrentUserService _currentUser;
     private readonly IMembershipRepository _membershipRepository;
     private readonly INotificationPushService _pushService;
+    private readonly ICacheService _cache;
 
     public RemoveMemberCommandHandler(
         ICurrentUserService currentUser,
         IMembershipRepository membershipRepository,
-        INotificationPushService pushService)
+        INotificationPushService pushService,
+        ICacheService cache)
     {
         _currentUser = currentUser;
         _membershipRepository = membershipRepository;
         _pushService = pushService;
+        _cache = cache;
     }
 
     public async Task<bool> Handle(RemoveMemberCommand request, CancellationToken cancellationToken)
@@ -52,6 +56,13 @@ public sealed class RemoveMemberCommandHandler : IRequestHandler<RemoveMemberCom
 
         await _pushService.BroadcastScopeMembersChangedAsync(request.ScopeType, request.ScopeId, cancellationToken);
         await _pushService.BroadcastUserWorkspaceChangedAsync(request.UserId, cancellationToken);
+
+        // Invalidate the removed user's membership and permissions cache.
+        // MembershipRepository.Remove already handles the specific key removal,
+        // but we also clear the permissions bundle here for belt-and-suspenders.
+        _cache.Remove(CacheKeys.UserPermissions(request.UserId));
+        _cache.Remove(CacheKeys.UserOrgIds(request.UserId));
+        _cache.Remove(CacheKeys.UserProjectIds(request.UserId));
 
         return true;
     }
